@@ -44,7 +44,9 @@ class Data(object):
   def initialize_from_config(self):
     mname = "initialize_from_config"
 
-    self.no_classes = 4     
+    self.no_classes = 5     
+    self.pre_fetch = 1     
+    self.batch_random_seed = 1001     
     self.cur_batch_offset = 0 
     self.processing_cnt = 0 
     self.img_buf_size = None #shape of largest image unles restricted.
@@ -641,10 +643,7 @@ class Data(object):
       n_img_h = self.img_heigth
        
       #x_train = np.zeros(( tot_cnt, n_img_w, n_img_h, 3), dtype='uint8')
-      x_img_buf = np.empty(( n_img_w, n_img_h), dtype='uint8')
-      x_buf = None
-      y_buf = None
-      y_labels = []
+      #x_img_buf = np.empty(( n_img_w, n_img_h), dtype='uint8')
       x_buf = np.zeros(( n_img_w, n_img_h), dtype='uint8')
       y_buf = np.zeros((1),dtype='uint8')
        
@@ -661,7 +660,6 @@ class Data(object):
       if line == "":
          fd.seek(0)
          line = fd.readline()
-      print("*********",line)
       line = line.strip().split(',')
       image_id = line[0] 
       label = line[1] 
@@ -680,7 +678,7 @@ class Data(object):
         else:
           x_buf[:,:,:] = myimg1.getImage()
          
-        y_labels.append(label)
+        #y_labels.append(label)
          
         #self.log( mname, "Image file [{}] doesn't exists!!!".format(imgpath), level=2)
         cnt += 1
@@ -691,24 +689,33 @@ class Data(object):
         file_missing += 1
          
       #create y array as required
-      y_buf = np.array( y_labels, dtype='uint8')
-      #y_buf = np.reshape( y_buf, (y_buf.size,1))
+      y_buf = np.array( label, dtype='uint8')
+      y_buf = np.reshape( y_buf, (y_buf.size,1))
       y_buf = keras.utils.to_categorical(y_buf, self.no_classes)
-      print("XXXXX",y_buf)
+      #print("XXXXX",image_id,label,y_buf,y_buf.shape)
        
       x_buf = x_buf.astype('float32') / 255
+     
+      ''' 
+      m = re.findall('(^\d+)_(.*?)$',image_id)
+      _id = tf.cast(m[0][0],tf.int64)
+      ''' 
        
       yield (x_buf, y_buf)
+      #yield (x_buf, y_buf, _id)
    
   def get_iterator(self):
      
     dataset = tf.data.Dataset.from_generator( \
                  self.image_generator, \
                  (tf.uint8, tf.float32), \
-                 #(tf.TensorShape([self.img_width,self.img_heigth,1]),tf.TensorShape([1])))
-                 (tf.TensorShape([self.img_width,self.img_heigth]),tf.TensorShape([1,4])))
-    #dataset = dataset.batch(self.batch_size)
+                 #(tf.uint8, tf.float32, tf.int64), \
+                 #(tf.TensorShape([self.img_width,self.img_heigth]),tf.TensorShape([1,5],tf.TensorShape[1])))
+                 (tf.TensorShape([self.img_width,self.img_heigth]),tf.TensorShape([1,5])))
+    dataset = dataset.batch(self.batch_size)
+    dataset = dataset.shuffle(buffer_size=self.pre_fetch*self.batch_size,seed=self.batch_random_seed)
     _iterator = dataset.make_initializable_iterator()
+    #_iterator = dataset.make_one_shot_iterator()
      
     return dataset,_iterator
      
@@ -725,17 +732,18 @@ if __name__ == "__main__":
     _dataset,_iterator = data.get_iterator()
     training_init_op = _iterator.make_initializer(_dataset)
     sess.run(training_init_op)
-    print("+++++++++++++++")
+    X, Y = _iterator.get_next()
+    #X, Y, ID = _iterator.get_next()
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     for i in range(2):
-      print("+++++")
-      X, Y = _iterator.get_next()
-      print("+++++++++")
-      x = X.eval()
-      y = Y.eval()
-      print("***",np.shape(x),np.shape(y),"****",y)
+      #X, Y = _iterator.get_next()
+      x, y = X, Y
+      #x, y, _id = X, Y, ID
+      print("***",np.shape(x.eval()),np.shape(y.eval()),"****",y.eval())
+      #print("***",np.shape(x.eval()),np.shape(y.eval()),"****",_id.eval(),y.eval())
    
   df1 = pd.read_csv( data.train_data_dir + 'train' + '_df.csv')
-  print(df1.head())
+  #print(df1.head())
   ''' 
   for train_cnt in range(2):
     x,y = data.image_data_generator(mode="train")
