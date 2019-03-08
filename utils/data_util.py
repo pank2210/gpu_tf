@@ -641,6 +641,7 @@ class Data(object):
     while True:
       n_img_w = self.img_width
       n_img_h = self.img_heigth
+      channels = self.channels
        
       #x_train = np.zeros(( tot_cnt, n_img_w, n_img_h, 3), dtype='uint8')
       #x_img_buf = np.empty(( n_img_w, n_img_h), dtype='uint8')
@@ -674,7 +675,7 @@ class Data(object):
          
         #x_img_buf[ 0, :, :] = myimg1.getImage()
         if self.channels == 1:
-          x_buf[:,:] = myimg1.getImage()
+          x_buf[:,:,0] = myimg1.getImage()
         else:
           x_buf[:,:,:] = myimg1.getImage()
          
@@ -711,7 +712,7 @@ class Data(object):
                  (tf.uint8, tf.float32), \
                  #(tf.uint8, tf.float32, tf.int64), \
                  #(tf.TensorShape([self.img_width,self.img_heigth]),tf.TensorShape([1,5],tf.TensorShape[1])))
-                 (tf.TensorShape([self.img_width,self.img_heigth]),tf.TensorShape([1,5])))
+                 (tf.TensorShape([self.img_width,self.img_heigth,self.channels]),tf.TensorShape([1,5])))
     dataset = dataset.batch(self.batch_size)
     dataset = dataset.shuffle(buffer_size=self.pre_fetch*self.batch_size,seed=self.batch_random_seed)
     _iterator = dataset.make_initializable_iterator()
@@ -726,21 +727,29 @@ if __name__ == "__main__":
   #data.load_img_data()
    
   #data.initialize_for_batch_load()
+  '''
   with tf.Session() as sess:
-    #iterator = data.get_iterator()
-    #for X, Y in data.get_iterator():
-    _dataset,_iterator = data.get_iterator()
-    training_init_op = _iterator.make_initializer(_dataset)
-    sess.run(training_init_op)
-    X, Y = _iterator.get_next()
-    #X, Y, ID = _iterator.get_next()
-    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-    for i in range(2):
-      #X, Y = _iterator.get_next()
-      x, y = X, Y
-      #x, y, _id = X, Y, ID
-      print("***",np.shape(x.eval()),np.shape(y.eval()),"****",y.eval())
-      #print("***",np.shape(x.eval()),np.shape(y.eval()),"****",_id.eval(),y.eval())
+    with tf.device('/cpu:0'):
+  with tf.device('/cpu:0'):
+  with tf.Session() as sess, tf.device('/cpu:0'):
+  '''
+  with tf.Graph().as_default(), tf.device('/cpu:0'):
+   # with tf.Session() as sess:
+      #iterator = data.get_iterator()
+      #for X, Y in data.get_iterator():
+      _dataset,_iterator = data.get_iterator()
+      training_init_op = _iterator.make_initializer(_dataset)
+      #sess.run(training_init_op)
+      X, Y = _iterator.get_next()
+      #X, Y, ID = _iterator.get_next()
+      print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+      for i in range(2):
+        #X, Y = _iterator.get_next()
+        x, y = X, Y
+        #x, y, _id = X, Y, ID
+        #print("***",np.shape(x.eval()),np.shape(y.eval()),"****",y.eval())
+        print("***",np.shape(x),np.shape(y),"****",y)
+        #print("***",np.shape(x.eval()),np.shape(y.eval()),"****",_id.eval(),y.eval())
    
   df1 = pd.read_csv( data.train_data_dir + 'train' + '_df.csv')
   #print(df1.head())
