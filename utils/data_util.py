@@ -444,8 +444,12 @@ class Data(object):
   def get_batch_size(self):
     return self.batch_size
   
+  def set_no_classes(self,no_classes):
+    self.no_classes = no_classes
+     
+    return True
+  
   def set_batch_size(self,batch_size):
-
     self.batch_size = batch_size
      
     return True
@@ -555,7 +559,8 @@ class Data(object):
       x_buf = x_buf.astype('float32') / 255
       
       # Convert class vectors to binary class matrices.
-      y_buf = keras.utils.to_categorical(y_buf, self.no_classes)
+      #y_buf = keras.utils.to_categorical(y_buf, self.no_classes)
+      y_buf = y_buf.astype('uint8')
 
       yield (x_buf, y_buf)
      
@@ -645,7 +650,7 @@ class Data(object):
        
       #x_train = np.zeros(( tot_cnt, n_img_w, n_img_h, 3), dtype='uint8')
       #x_img_buf = np.empty(( n_img_w, n_img_h), dtype='uint8')
-      x_buf = np.zeros(( n_img_w, n_img_h), dtype='uint8')
+      x_buf = np.zeros(( n_img_w, n_img_h, channels), dtype='uint8')
       y_buf = np.zeros((1),dtype='uint8')
        
       #loop in through dataframe. 
@@ -691,12 +696,23 @@ class Data(object):
          
       #create y array as required
       y_buf = np.array( label, dtype='uint8')
-      y_buf = np.reshape( y_buf, (y_buf.size,1))
+      y_buf = y_buf.astype('float32')
+      y_buf = np.reshape( y_buf, (1))
+      #y_buf = np.reshape( y_buf, (y_buf.size,1))
       y_buf = keras.utils.to_categorical(y_buf, self.no_classes)
       #print("XXXXX",image_id,label,y_buf,y_buf.shape)
        
       x_buf = x_buf.astype('float32') / 255
-     
+      # Crop the central [height, width] of the image.
+      #x_buf = tf.cast( x_buf, tf.float32)
+      #x_buf = tf.image.resize_image_with_crop_or_pad(x_buf,n_img_h,n_img_w)
+       
+      # Subtract off the mean and divide by the variance of the pixels.
+      #x_buf = tf.image.per_image_standardization(x_buf)
+       
+      # Set the shapes of tensors.
+      #x_buf.set_shape([n_img_w, n_img_h, channels])
+       
       ''' 
       m = re.findall('(^\d+)_(.*?)$',image_id)
       _id = tf.cast(m[0][0],tf.int64)
@@ -709,10 +725,10 @@ class Data(object):
      
     dataset = tf.data.Dataset.from_generator( \
                  self.image_generator, \
-                 (tf.uint8, tf.float32), \
+                 (tf.float32, tf.float32), \
                  #(tf.uint8, tf.float32, tf.int64), \
                  #(tf.TensorShape([self.img_width,self.img_heigth]),tf.TensorShape([1,5],tf.TensorShape[1])))
-                 (tf.TensorShape([self.img_width,self.img_heigth,self.channels]),tf.TensorShape([1,5])))
+                 (tf.TensorShape([self.img_width,self.img_heigth,self.channels]),tf.TensorShape([1,self.no_classes])))
     dataset = dataset.batch(self.batch_size)
     dataset = dataset.shuffle(buffer_size=self.pre_fetch*self.batch_size,seed=self.batch_random_seed)
     _iterator = dataset.make_initializable_iterator()
@@ -727,19 +743,14 @@ if __name__ == "__main__":
   #data.load_img_data()
    
   #data.initialize_for_batch_load()
-  '''
+  #'''
+  #with tf.Graph().as_default(), tf.device('/cpu:0'):
   with tf.Session() as sess:
-    with tf.device('/cpu:0'):
-  with tf.device('/cpu:0'):
-  with tf.Session() as sess, tf.device('/cpu:0'):
-  '''
-  with tf.Graph().as_default(), tf.device('/cpu:0'):
-   # with tf.Session() as sess:
       #iterator = data.get_iterator()
       #for X, Y in data.get_iterator():
       _dataset,_iterator = data.get_iterator()
       training_init_op = _iterator.make_initializer(_dataset)
-      #sess.run(training_init_op)
+      sess.run(training_init_op)
       X, Y = _iterator.get_next()
       #X, Y, ID = _iterator.get_next()
       print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++")
@@ -747,11 +758,12 @@ if __name__ == "__main__":
         #X, Y = _iterator.get_next()
         x, y = X, Y
         #x, y, _id = X, Y, ID
-        #print("***",np.shape(x.eval()),np.shape(y.eval()),"****",y.eval())
-        print("***",np.shape(x),np.shape(y),"****",y)
+        print("***",np.shape(x.eval()),np.shape(y.eval()),"****",y.eval())
+        #print("***",np.shape(x),x.get_shape().as_list()[1],np.shape(y),"****",y)
         #print("***",np.shape(x.eval()),np.shape(y.eval()),"****",_id.eval(),y.eval())
    
-  df1 = pd.read_csv( data.train_data_dir + 'train' + '_df.csv')
+  #'''
+  #df1 = pd.read_csv( data.train_data_dir + 'train' + '_df.csv')
   #print(df1.head())
   ''' 
   for train_cnt in range(2):

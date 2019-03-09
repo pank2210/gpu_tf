@@ -472,10 +472,8 @@ class myImg(object):
        
       return y + int(5 * image_scale)  
 
-def main(argv):
-   i_imgpath = ''
-   i_cdir = './'
-   
+def main(argv=None):
+   ''' 
    try:
       opts, args = getopt.getopt(argv,"ic:h",["i_img","i_cdir"])
    except getopt.GetoptError:
@@ -491,10 +489,11 @@ def main(argv):
          i_imgpath = arg
       elif opt in ("-c", "--i_cdir"):
          i_cdir = arg
+   ''' 
     
    #i_imgpath = 'normal_fundus.jpg'
    i_imgpath = '/scratch/data/croped/10003_left.jpeg'
-   i_cdir = '../../'
+   i_cdir = '../'
    print("Input image file is ".format(i_imgpath))
    print("Input working directory is ".format(i_cdir))
 
@@ -511,4 +510,13 @@ def main(argv):
    #img2.showImageAndHistogram()
 
 if __name__ == "__main__":
-   main(sys.argv[1:])
+   #main(sys.argv[1:])
+   i_imgpath = '/scratch/data/croped/10003_left.jpeg'
+   i_cdir = './'
+   print("Input image file is [{}]".format(i_imgpath))
+   print("Input working directory is [{}]".format(i_cdir))
+
+   config = cutil.Config(configid="myConfId",cdir=i_cdir)
+   img1 = myImg(imageid="xx",config=config,ekey='x123',path=i_imgpath)
+   #img1.saveImage()
+   img1.printImageProp()
