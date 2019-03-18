@@ -79,6 +79,7 @@ def tower_loss(scope, images, labels):
   # Build inference Graph.
   #logits = cifar10.inference1(images)
   logits = cifar10.resnet(inpt=images,n=20)
+  #logits = cifar10.simple_net(inpt=images)
   #print("logits ############",logits.get_shape())
 
   # Build the portion of the Graph calculating the losses. Note that we will

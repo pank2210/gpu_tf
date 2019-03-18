@@ -67,8 +67,8 @@ tf.app.flags.DEFINE_integer('no_classes', NUM_CLASSES,
 # Constants describing the training process.
 MOVING_AVERAGE_DECAY = 0.9999     # The decay to use for the moving average.
 NUM_EPOCHS_PER_DECAY = 3.0      # Epochs after which learning rate decays.
-LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
-INITIAL_LEARNING_RATE = 0.1       # Initial learning rate.
+LEARNING_RATE_DECAY_FACTOR = 0.01  # Learning rate decay factor.
+INITIAL_LEARNING_RATE = 0.001       # Initial learning rate.
 
 # If a model is trained with multiple GPUs, prefix all Op names with tower_name
 # to differentiate the operations. Note that this prefix is removed from the
@@ -223,7 +223,7 @@ def conv_layer( _scope, inpt, filter_shape, stride, stddev=5e-2, wd=0.04):
      
     return conv
 
-def residual_block( _scope, inpt, output_depth, down_sample, projection=False,stddev=5e-2,wd=None):
+def residual_block( _scope, inpt, output_depth, down_sample, projection=False,stddev=1e-2,wd=None):
   with tf.variable_scope(_scope) as scope:
     input_depth = inpt.get_shape().as_list()[3]
     if down_sample:
@@ -248,6 +248,78 @@ def residual_block( _scope, inpt, output_depth, down_sample, projection=False,st
      
     return res
 
+# ResNet architectures used for CIFAR-10
+def simple_net(inpt):
+    print("***********SimpleNet**********")
+    num_layers = 4
+    channels_increment_factor = 2
+    out_channels = 16
+    keep_prob = .7
+     
+    with tf.variable_scope('conv0') as scope:
+        net = conv_layer( scope.name, inpt, [5, 5, 1, out_channels], 1)
+        print("**",scope.name,net.get_shape())
+
+    with tf.variable_scope('pool0') as scope:
+        filter_ = [1,3,3,1]
+        stride_ = [1,2,2,1]
+        net = tf.nn.max_pool(net, ksize=filter_, strides=stride_, padding='SAME')
+        net = tf.layers.batch_normalization(net)
+        print("**",scope.name,net.get_shape())
+
+    for i in range(num_layers): 
+      layer_str = str(i+1)
+      in_channels = out_channels
+      out_channels *= channels_increment_factor
+      with tf.variable_scope('conv' + layer_str) as scope:
+        net = conv_layer( scope.name, net, [3, 3, in_channels, out_channels], 1)
+        print("**",scope.name,net.get_shape())
+
+      with tf.variable_scope('pool' + layer_str) as scope:
+        filter_ = [1,2,2,1]
+        stride_ = [1,2,2,1]
+        net = tf.nn.max_pool(net, ksize=filter_, strides=stride_, padding='SAME')
+        net = tf.layers.batch_normalization(net)
+        print("**",scope.name,net.get_shape())
+
+    fc_1_units = 64
+    with tf.variable_scope('fc_1') as scope:
+        net = tf.layers.flatten( net, name=scope.name)
+        print("***",scope.name,net.get_shape())
+        net = tf.layers.dense( net, fc_1_units, name=scope.name)
+        net = tf.nn.dropout( net, keep_prob)
+        net = tf.layers.batch_normalization(net)
+        print("*****",scope.name,net.get_shape())
+     
+    fc_2_units = 128
+    with tf.variable_scope('fc_2') as scope:
+        net = tf.layers.dense( net, fc_2_units, name=scope.name)
+        net = tf.nn.dropout( net, keep_prob)
+        net = tf.layers.batch_normalization(net)
+        print("*****",scope.name,net.get_shape())
+    
+    fc_3_units = 256
+    with tf.variable_scope('fc_3') as scope:
+        net = tf.layers.dense( net, fc_3_units, name=scope.name)
+        net = tf.nn.dropout( net, keep_prob)
+        net = tf.layers.batch_normalization(net)
+        print("*****",scope.name,net.get_shape())
+    
+    fc_4_units = 512
+    with tf.variable_scope('fc_4') as scope:
+        net = tf.layers.dense( net, fc_4_units, name=scope.name)
+        net = tf.nn.dropout( net, keep_prob)
+        net = tf.layers.batch_normalization(net)
+        print("*****",scope.name,net.get_shape())
+    
+    with tf.variable_scope('fc_5') as scope:
+        net = tf.layers.dense( net, NUM_CLASSES, name=scope.name)
+        print("*****",scope.name,net.get_shape())
+    
+    return net
+
+
+
 n_dict = {20:1, 32:2, 44:3, 56:4}
 # ResNet architectures used for CIFAR-10
 def resnet(inpt, n):
@@ -259,9 +331,15 @@ def resnet(inpt, n):
     layers = []
 
     with tf.variable_scope('conv0') as scope:
-        conv1 = conv_layer( scope.name, inpt, [3, 3, 1, 16], 1)
+        conv1 = conv_layer( scope.name, inpt, [5, 5, 1, 16], 1)
         layers.append(conv1)
 
+    with tf.variable_scope('pool0') as scope:
+      filter_ = [1,2,2,1]
+      pool0 = tf.nn.max_pool(layers[-1], ksize=filter_, strides=filter_, padding='SAME')
+      layers.append(pool0)
+      print("*****",scope.name,"**pool0**",pool0.get_shape())
+    
     for i in range (num_conv):
         with tf.variable_scope('res_%d' % (i+1)) as scope:
             conv2_x = residual_block(scope.name + '-1',layers[-1], 16, False)

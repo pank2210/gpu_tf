@@ -698,12 +698,13 @@ class Data(object):
       y_buf = np.array( label, dtype='uint8')
       y_buf = y_buf.astype('float32')
       y_buf = np.reshape( y_buf, (1))
-      #y_buf = np.reshape( y_buf, (y_buf.size,1))
       y_buf = keras.utils.to_categorical(y_buf, self.no_classes)
+      #y_buf = np.reshape( y_buf, (self.no_classes,1))
       #print("XXXXX",image_id,label,y_buf,y_buf.shape)
        
       #x_buf = x_buf.astype('float32') / 255
       x_buf = x_buf.astype('float32')
+      x_buf /= 255.0
       x_buf -= np.mean(x_buf)
       # Crop the central [height, width] of the image.
       #x_buf = tf.cast( x_buf, tf.float32)
