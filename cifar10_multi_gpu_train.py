@@ -212,15 +212,17 @@ def train():
 
             # Calculate the gradients for the batch of data on this CIFAR tower.
             grads = opt.compute_gradients(loss)
+            '''
             print("grads ############# len ",len(grads))
             for i,grad in enumerate(grads):
               for j,g in enumerate(grad):
                 print(i,j,"grad +++",g)
-            #print("grads #############",grads.get_shape())
+            print("grads #############",grads.get_shape())
+            '''
 
             # Keep track of the gradients across all towers.
             tower_grads.append(grads)
-            print("tower_grads ############# len ",len(tower_grads))
+            #print("tower_grads ############# len ",len(tower_grads))
 
     # We must calculate the mean of each gradient. Note that this is the
     # synchronization point across all towers.

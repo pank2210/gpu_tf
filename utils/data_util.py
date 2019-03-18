@@ -702,7 +702,9 @@ class Data(object):
       y_buf = keras.utils.to_categorical(y_buf, self.no_classes)
       #print("XXXXX",image_id,label,y_buf,y_buf.shape)
        
-      x_buf = x_buf.astype('float32') / 255
+      #x_buf = x_buf.astype('float32') / 255
+      x_buf = x_buf.astype('float32')
+      x_buf -= np.mean(x_buf)
       # Crop the central [height, width] of the image.
       #x_buf = tf.cast( x_buf, tf.float32)
       #x_buf = tf.image.resize_image_with_crop_or_pad(x_buf,n_img_h,n_img_w)
