@@ -54,7 +54,7 @@ NUM_EXAMPLES_PER_EPOCH_FOR_EVAL = cifar10_input.NUM_EXAMPLES_PER_EPOCH_FOR_EVAL
 FLAGS = tf.app.flags.FLAGS
 
 # Basic model parameters.
-tf.app.flags.DEFINE_integer('batch_size', 2,
+tf.app.flags.DEFINE_integer('batch_size', 4,
                             """Number of images to process in a batch.""")
 tf.app.flags.DEFINE_string('data_dir', '/tmp/cifar10_data',
                            """Path to the CIFAR-10 data directory.""")
@@ -130,6 +130,7 @@ def _variable_with_weight_decay(name, shape, stddev, wd):
     Variable Tensor
   """
   dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
+  #print("@@@",name,"@@@",shape,"@@@",stddev,"@@@",wd,"@@@")
   var = _variable_on_cpu(
       name,
       shape,
@@ -185,6 +186,266 @@ def inputs(eval_data):
     labels = tf.cast(labels, tf.float16)
   return images, labels
 
+def weight_variable(shape, name=None):
+    initial = tf.truncated_normal(shape, stddev=0.1)
+    return tf.Variable(initial, name=name)
+
+def softmax_layer(inpt, shape):
+    fc_w = weight_variable(shape)
+    fc_b = tf.Variable(tf.zeros([shape[1]]))
+
+    fc_h = tf.nn.softmax(tf.matmul(inpt, fc_w) + fc_b)
+
+    return fc_h
+
+def conv_layer( _scope, inpt, filter_shape, stride, stddev=5e-2, wd=0.04):
+  with tf.variable_scope(_scope) as scope:
+    print("*****",_scope,"**conv layer**",inpt.get_shape(),"***",filter_shape,"***",stddev)
+    out_channels = filter_shape[3]
+    '''
+    filter_ = weight_variable(filter_shape)
+    conv = tf.nn.conv2d(inpt, filter=filter_, strides=[1, stride, stride, 1], padding="SAME", use_cudnn_on_gpu=True)
+    mean, var = tf.nn.moments(conv, axes=[0,1,2])
+    beta = tf.Variable(tf.zeros([out_channels]), name="beta")
+    gamma = weight_variable([out_channels], name="gamma")
+    '''
+    kernel = _variable_with_weight_decay('weights',
+                                         shape=filter_shape,
+                                         stddev=stddev,
+                                         wd=wd)
+    conv = tf.nn.conv2d(inpt, kernel, [1, stride, stride, 1], padding='SAME')
+    biases = _variable_on_cpu('biases', [out_channels], tf.constant_initializer(0.1))
+    pre_activation = tf.nn.bias_add(conv, biases)
+    #conv = tf.nn.relu(pre_activation, name=scope.name)
+    conv = tf.nn.relu(pre_activation, name=_scope)
+     
+    _activation_summary(conv)
+     
+    return conv
+
+def residual_block( _scope, inpt, output_depth, down_sample, projection=False,stddev=5e-2,wd=None):
+  with tf.variable_scope(_scope) as scope:
+    input_depth = inpt.get_shape().as_list()[3]
+    if down_sample:
+        filter_ = [1,2,2,1]
+        inpt = tf.nn.max_pool(inpt, ksize=filter_, strides=filter_, padding='SAME')
+
+    print("***",_scope,"**resnet block**",inpt.get_shape(),"***",stddev)
+    conv1 = conv_layer( "%s-%s" % (_scope,'1'),inpt, [3, 3, input_depth, output_depth], 1, stddev, wd)
+    conv2 = conv_layer( "%s-%s" % (_scope,'2'),conv1, [3, 3, output_depth, output_depth], 1, stddev, wd)
+
+    if input_depth != output_depth:
+        if projection:
+            # Option B: Projection shortcut
+            input_layer = conv_layer( "%s-%s" % (_scope,'3'),inpt, [1, 1, input_depth, output_depth], 2)
+        else:
+            # Option A: Zero-padding
+            input_layer = tf.pad(inpt, [[0,0], [0,0], [0,0], [0, output_depth - input_depth]])
+    else:
+        input_layer = inpt
+
+    res = conv2 + input_layer
+     
+    return res
+
+n_dict = {20:1, 32:2, 44:3, 56:4}
+# ResNet architectures used for CIFAR-10
+def resnet(inpt, n):
+    if n < 20 or (n - 20) % 12 != 0:
+        print("ResNet depth invalid.")
+        return
+
+    num_conv = int((n - 20) / 12 + 1)
+    layers = []
+
+    with tf.variable_scope('conv0') as scope:
+        conv1 = conv_layer( scope.name, inpt, [3, 3, 1, 16], 1)
+        layers.append(conv1)
+
+    for i in range (num_conv):
+        with tf.variable_scope('res_%d' % (i+1)) as scope:
+            conv2_x = residual_block(scope.name + '-1',layers[-1], 16, False)
+            conv2 = residual_block(scope.name + '-2',conv2_x, 16, False)
+            layers.append(conv2_x)
+            layers.append(conv2)
+
+        #assert conv2.get_shape().as_list()[1:] == [32, 32, 16]
+     
+    with tf.variable_scope('pool1') as scope:
+      filter_ = [1,2,2,1]
+      pool1 = tf.nn.max_pool(layers[-1], ksize=filter_, strides=filter_, padding='SAME')
+      layers.append(pool1)
+      print("*****",scope.name,"**pool1**",pool1.get_shape())
+    
+    for i in range (num_conv):
+        down_sample = True if i == 0 else False
+        with tf.variable_scope('conv3_%d' % (i+1)) as scope:
+            conv3_x = residual_block(scope.name + '-1',layers[-1], 32, down_sample,stddev=5e-2,wd=.04)
+            conv3 = residual_block(scope.name + '-2',conv3_x, 32, False,stddev=5e-2,wd=0.04)
+            layers.append(conv3_x)
+            layers.append(conv3)
+
+        #assert conv3.get_shape().as_list()[1:] == [16, 16, 32]
+     
+    with tf.variable_scope('pool2') as scope:
+      filter_ = [1,2,2,1]
+      pool2 = tf.nn.max_pool(layers[-1], ksize=filter_, strides=filter_, padding='SAME')
+      layers.append(pool2)
+      print("*****",scope.name,"**pool2**",pool2.get_shape())
+   
+    fc1_units = 64 
+    for i in range (num_conv):
+        down_sample = True if i == 0 else False
+        with tf.variable_scope('conv4_%d' % (i+1)) as scope:
+            conv4_x = residual_block(scope.name + '-1' ,layers[-1], fc1_units, down_sample)
+            conv4 = residual_block(scope.name + '-2',conv4_x, fc1_units, False)
+            layers.append(conv4_x)
+            layers.append(conv4)
+
+        #assert conv4.get_shape().as_list()[1:] == [8, 8, 64]
+
+    with tf.variable_scope('fc') as scope:
+        out = tf.layers.flatten( layers[-1], name=scope.name)
+        print("*****",scope.name,"**flatten**",out.get_shape())
+        out = tf.layers.dense( out, NUM_CLASSES, name=scope.name)
+        layers.append(out)
+        print("*****",scope.name,"**out**",out.get_shape())
+
+    return layers[-1]
+
+
+def inference1(images):
+  """Build the CIFAR-10 model.
+
+  Args:
+    images: Images returned from distorted_inputs() or inputs().
+
+  Returns:
+    Logits.
+  """
+  # We instantiate all variables using tf.get_variable() instead of
+  # tf.Variable() in order to share variables across multiple GPU training runs.
+  # If we only ran this model on a single GPU, we could simplify this function
+  # by replacing all instances of tf.get_variable() with tf.Variable().
+  #
+  # conv1
+  print("images","**************",images.get_shape())
+  with tf.variable_scope('conv1') as scope:
+    kernel = _variable_with_weight_decay('weights',
+                                         shape=[3, 3, 1, 16],
+                                         stddev=5e-2,
+                                         wd=None)
+    conv = tf.nn.conv2d(images, kernel, [1, 1, 1, 1], padding='SAME')
+    biases = _variable_on_cpu('biases', [16], tf.constant_initializer(0.0))
+    pre_activation = tf.nn.bias_add(conv, biases)
+    conv1 = tf.nn.relu(pre_activation, name=scope.name)
+    _activation_summary(conv1)
+    '''
+    conv1 = tf.layers.conv2d( images, 64, 5, activation=tf.nn.relu)
+  pool1 = tf.layers.max_pooling2d( conv1, pool_size = 3, strides=2, padding='same',name='pool1')
+  '''
+  print("conv1","**************",conv1.get_shape())
+  # pool1
+  pool1 = tf.nn.max_pool(conv1, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1],
+                         padding='SAME', name='pool1')
+  print("pool1","**************",pool1.get_shape())
+  # norm1
+  norm1 = tf.nn.lrn(pool1, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75,
+                    name='norm1')
+   
+  # conv2
+  with tf.variable_scope('conv2') as scope:
+    kernel = _variable_with_weight_decay('weights',
+                                         shape=[3, 3, 16, 16],
+                                         stddev=5e-2,
+                                         wd=None)
+    conv = tf.nn.conv2d(norm1, kernel, [1, 1, 1, 1], padding='SAME')
+    biases = _variable_on_cpu('biases', [16], tf.constant_initializer(0.1))
+    pre_activation = tf.nn.bias_add(conv, biases)
+    conv2 = tf.nn.relu(pre_activation, name=scope.name)
+    _activation_summary(conv2)
+  print("conv2","**************",conv2.get_shape())
+   
+  # norm2
+  norm2 = tf.nn.lrn(conv2, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75,
+                    name='norm2')
+  # pool2
+  pool2 = tf.nn.max_pool(norm2, ksize=[1, 3, 3, 1],
+                         strides=[1, 2, 2, 1], padding='SAME', name='pool2')
+  '''
+    conv2 = tf.layers.conv2d( pool1, 64, 3, activation=tf.nn.relu)
+  pool2 = tf.layers.max_pooling2d( conv2, pool_size = 3, strides=2, padding='same',name='pool2')
+  '''
+  print("pool2","**************",pool2.get_shape())
+   
+  # local3
+  with tf.variable_scope('local3') as scope:
+    # Move everything into depth so we can perform a single matrix multiply.
+    '''
+    reshape = tf.reshape(pool2, [images.get_shape().as_list()[0], -1])
+    reshape = tf.reshape(pool2, [FLAGS.batch_size,-1])
+    print("local3.reshape","**************",reshape.get_shape())
+    '''
+    local3 = tf.contrib.layers.flatten(pool2)
+    print("local3 flatened","**************",local3.get_shape())
+    dim = local3.get_shape()[1].value
+    weights = _variable_with_weight_decay('weights', shape=[dim, 256],
+                                          stddev=0.04, wd=0.004)
+    biases = _variable_on_cpu('biases', [256], tf.constant_initializer(0.1))
+    local3 = tf.nn.relu(tf.matmul(local3, weights) + biases, name=scope.name)
+    _activation_summary(local3)
+    '''
+    dim = local3.get_shape()[1].value
+    local3 = tf.layers.dense(inputs=local3,units=512,activation=tf.nn.relu,
+                               use_bias=True, 
+                               bias_initializer=_variable_on_cpu('biases',[512],
+                                   tf.constant_initializer(0.1)),
+                               kernel_initializer = _variable_with_weight_decay('weights', 
+                                          shape=[dim, 512],
+                                          stddev=0.04, wd=0.004)
+                              )
+    '''
+    print("local3","**************",local3.get_shape())
+
+  # local4
+  with tf.variable_scope('local4') as scope:
+    weights = _variable_with_weight_decay('weights', shape=[256, 256],
+                                          stddev=0.04, wd=0.004)
+    biases = _variable_on_cpu('biases', [256], tf.constant_initializer(0.1))
+    local4 = tf.nn.relu(tf.matmul(local3, weights) + biases, name=scope.name)
+    print("local4","**************",local4.get_shape())
+    _activation_summary(local4)
+    '''
+    local4 = tf.layers.dense(inputs=local3,units=512,activation=tf.nn.relu,
+                               use_bias=True, 
+                               bias_initializer=_variable_on_cpu('biases',[512],
+                                   tf.constant_initializer(0.1)),
+                               kernel_initializer = _variable_with_weight_decay('weights', 
+                                          shape=[512, 512],
+                                          stddev=0.04, wd=0.004)
+                              )
+    '''
+    print("local4","**************",local4.get_shape())
+
+  # linear layer(WX + b),
+  # We don't apply softmax here because
+  # tf.nn.sparse_softmax_cross_entropy_with_logits accepts the unscaled logits
+  # and performs the softmax internally for efficiency.
+  with tf.variable_scope('softmax_linear') as scope:
+    weights = _variable_with_weight_decay('weights', [256, NUM_CLASSES],
+                                          stddev=1/256.0, wd=None)
+    biases = _variable_on_cpu('biases', [NUM_CLASSES],
+                              tf.constant_initializer(0.0))
+    softmax_linear = tf.add(tf.matmul(local4, weights), biases, name=scope.name)
+    print("softmax","**************",softmax_linear.get_shape())
+    _activation_summary(softmax_linear)
+    '''
+    softmax_linear = tf.layers.dense(local4,NUM_CLASSES)
+    '''
+    print("softmax_linear","**************",softmax_linear.get_shape())
+
+  return softmax_linear
+
 
 def inference(images):
   """Build the CIFAR-10 model.
@@ -204,11 +465,11 @@ def inference(images):
   print("images","**************",images.get_shape())
   with tf.variable_scope('conv1') as scope:
     kernel = _variable_with_weight_decay('weights',
-                                         shape=[5, 5, 1, 64],
+                                         shape=[3, 3, 1, 16],
                                          stddev=5e-2,
                                          wd=None)
     conv = tf.nn.conv2d(images, kernel, [1, 1, 1, 1], padding='SAME')
-    biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.0))
+    biases = _variable_on_cpu('biases', [16], tf.constant_initializer(0.0))
     pre_activation = tf.nn.bias_add(conv, biases)
     conv1 = tf.nn.relu(pre_activation, name=scope.name)
     _activation_summary(conv1)
@@ -225,11 +486,11 @@ def inference(images):
   # conv2
   with tf.variable_scope('conv2') as scope:
     kernel = _variable_with_weight_decay('weights',
-                                         shape=[5, 5, 64, 64],
+                                         shape=[3, 3, 16, 16],
                                          stddev=5e-2,
                                          wd=None)
     conv = tf.nn.conv2d(norm1, kernel, [1, 1, 1, 1], padding='SAME')
-    biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.1))
+    biases = _variable_on_cpu('biases', [16], tf.constant_initializer(0.1))
     pre_activation = tf.nn.bias_add(conv, biases)
     conv2 = tf.nn.relu(pre_activation, name=scope.name)
     _activation_summary(conv2)
@@ -302,15 +563,21 @@ def loss(logits, labels):
   labels = tf.cast(labels, tf.int64)
   print("labels","================",labels.get_shape())
   #cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
-  cross_entropy = tf.nn.softmax_cross_entropy_with_logits(
+  cross_entropy = tf.nn.softmax_cross_entropy_with_logits_v2(
       labels=labels, logits=logits, name='cross_entropy_per_example')
+  print("cross_entropy","================",cross_entropy.get_shape())
   cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
+  print("cross_entropy_mean","================",cross_entropy_mean.get_shape())
+   
   tf.add_to_collection('losses', cross_entropy_mean)
 
   # The total loss is defined as the cross entropy loss plus all of the weight
   # decay terms (L2 loss).
+  #tf.add_n( cross_entropy_mean, name='total_loss')
+   
+  #losses =  tf.get_collection('losses')
+  #print("losses","================",losses.get_shape())
   return tf.add_n(tf.get_collection('losses'), name='total_loss')
-
 
 def _add_loss_summaries(total_loss):
   """Add summaries for losses in CIFAR-10 model.

@@ -56,7 +56,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_dir', '/tmp/cifar10_train',
                            """Directory where to write event logs """
                            """and checkpoint.""")
-tf.app.flags.DEFINE_integer('max_steps', 1000000,
+tf.app.flags.DEFINE_integer('max_steps', 100,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_integer('num_gpus', 4,
                             """How many GPUs to use.""")
@@ -77,17 +77,23 @@ def tower_loss(scope, images, labels):
   """
 
   # Build inference Graph.
-  logits = cifar10.inference(images)
+  #logits = cifar10.inference1(images)
+  logits = cifar10.resnet(inpt=images,n=20)
+  #print("logits ############",logits.get_shape())
 
   # Build the portion of the Graph calculating the losses. Note that we will
   # assemble the total_loss using a custom function below.
   _ = cifar10.loss(logits, labels)
+  #print("After loss....")
 
   # Assemble all of the losses for the current tower only.
   losses = tf.get_collection('losses', scope)
+  #losses = tf.get_collection('losses')
+  #print("losses len ############",len(losses))
 
   # Calculate the total loss for the current tower.
   total_loss = tf.add_n(losses, name='total_loss')
+  #print("total_loss ############",total_loss.get_shape())
 
   # Attach a scalar summary to all individual losses and the total loss; do the
   # same for the averaged version of the losses.
@@ -95,6 +101,7 @@ def tower_loss(scope, images, labels):
     # Remove 'tower_[0-9]/' from the name in case this is a multi-GPU training
     # session. This helps the clarity of presentation on tensorboard.
     loss_name = re.sub('%s_[0-9]*/' % cifar10.TOWER_NAME, '', l.op.name)
+    #print("loss_name - ",loss_name)
     tf.summary.scalar(loss_name, l)
 
   return total_loss
@@ -114,20 +121,30 @@ def average_gradients(tower_grads):
      across all towers.
   """
   average_grads = []
+  i = 0
+  j = 0
   for grad_and_vars in zip(*tower_grads):
     # Note that each grad_and_vars looks like the following:
     #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
     grads = []
+    #print(i,"grad_and_vars ############ len ",len(grad_and_vars))
     for g, _ in grad_and_vars:
       # Add 0 dimension to the gradients to represent the tower.
+      #print("grad_and_vars ############ g ",g.get_shape())
       expanded_g = tf.expand_dims(g, 0)
+      #print(j,"grad_and_vars ############ expanded_g ",expanded_g.get_shape())
 
       # Append on a 'tower' dimension which we will average over below.
       grads.append(expanded_g)
+      j += 1
 
     # Average over the 'tower' dimension.
+    #print("grads ############ grad len ",len(grads))
     grad = tf.concat(axis=0, values=grads)
+    #print("grad ############  ",grad.get_shape())
     grad = tf.reduce_mean(grad, 0)
+    #print("grad ############  ",grad.get_shape())
+    i += 1
 
     # Keep in mind that the Variables are redundant because they are shared
     # across towers. So .. we will just return the first tower's pointer to
@@ -185,6 +202,7 @@ def train():
             # constructs the entire CIFAR model but shares the variables across
             # all towers.
             loss = tower_loss(scope, image_batch, label_batch)
+            print("scope - ",scope,"loss #############",loss.get_shape())
 
             # Reuse variables for the next tower.
             tf.get_variable_scope().reuse_variables()
@@ -194,9 +212,15 @@ def train():
 
             # Calculate the gradients for the batch of data on this CIFAR tower.
             grads = opt.compute_gradients(loss)
+            print("grads ############# len ",len(grads))
+            for i,grad in enumerate(grads):
+              for j,g in enumerate(grad):
+                print(i,j,"grad +++",g)
+            #print("grads #############",grads.get_shape())
 
             # Keep track of the gradients across all towers.
             tower_grads.append(grads)
+            print("tower_grads ############# len ",len(tower_grads))
 
     # We must calculate the mean of each gradient. Note that this is the
     # synchronization point across all towers.
@@ -241,9 +265,10 @@ def train():
         allow_soft_placement=True,
         log_device_placement=FLAGS.log_device_placement))
     sess.run(init)
+    sess.run(training_init_op)
 
     # Start the queue runners.
-    tf.train.start_queue_runners(sess=sess)
+    #tf.train.start_queue_runners(sess=sess)
 
     summary_writer = tf.summary.FileWriter(FLAGS.train_dir, sess.graph)
 

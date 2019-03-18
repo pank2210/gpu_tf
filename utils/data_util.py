@@ -739,38 +739,35 @@ class Data(object):
 if __name__ == "__main__":
   #prep_data()
   data = Data()
+  a1 = tf.Variable( 0, dtype='uint8')
   #data.load_data_as_greyscale()
   #data.load_img_data()
    
   #data.initialize_for_batch_load()
   #'''
-  #with tf.Graph().as_default(), tf.device('/cpu:0'):
-  with tf.Session() as sess:
+  with tf.Graph().as_default(), tf.device('/cpu:0'):
+  #with tf.Session() as sess:
       #iterator = data.get_iterator()
       #for X, Y in data.get_iterator():
       _dataset,_iterator = data.get_iterator()
-      training_init_op = _iterator.make_initializer(_dataset)
-      sess.run(training_init_op)
+      #training_init_op = _iterator.make_initializer(_dataset)
+      #sess.run(training_init_op)
+      #_iterator.initializer()
       X, Y = _iterator.get_next()
       #X, Y, ID = _iterator.get_next()
       print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-      for i in range(2):
+      for i in range(3):
         #X, Y = _iterator.get_next()
         x, y = X, Y
         #x, y, _id = X, Y, ID
-        print("***",np.shape(x.eval()),np.shape(y.eval()),"****",y.eval())
-        #print("***",np.shape(x),x.get_shape().as_list()[1],np.shape(y),"****",y)
+        #print("***",np.shape(x.eval()),np.shape(y.eval()),"****",y.eval())
+        print("***",np.shape(x),x.get_shape().as_list()[1],np.shape(y),"****",y)
         #print("***",np.shape(x.eval()),np.shape(y.eval()),"****",_id.eval(),y.eval())
+        #a1 += i
    
-  #'''
-  #df1 = pd.read_csv( data.train_data_dir + 'train' + '_df.csv')
-  #print(df1.head())
-  ''' 
-  for train_cnt in range(2):
-    x,y = data.image_data_generator(mode="train")
-    print("train_cnt[{}] x[{}] y[{}]".format(train_cnt,x.shape,y.shape))
-   
-  x,y = data.get_test_data()
-  print("test data x[{}] y[{}]".format(x.shape,y.shape))
-  ''' 
-   
+      #init_op = tf.global_variables_initializer()
+      
+      with tf.Session() as sess:
+        sess.run(x,init_op)   
+        #sess.run(training_init_op)   
+        print("a1=%d" % (sess.run(a1)))
