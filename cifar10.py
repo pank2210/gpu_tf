@@ -67,7 +67,7 @@ tf.app.flags.DEFINE_integer('no_classes', NUM_CLASSES,
 # Constants describing the training process.
 MOVING_AVERAGE_DECAY = 0.9999     # The decay to use for the moving average.
 NUM_EPOCHS_PER_DECAY = 3.0      # Epochs after which learning rate decays.
-LEARNING_RATE_DECAY_FACTOR = 0.01  # Learning rate decay factor.
+LEARNING_RATE_DECAY_FACTOR = 0.9  # Learning rate decay factor.
 INITIAL_LEARNING_RATE = 0.001       # Initial learning rate.
 
 # If a model is trained with multiple GPUs, prefix all Op names with tower_name
@@ -218,6 +218,7 @@ def conv_layer( _scope, inpt, filter_shape, stride, stddev=5e-2, wd=0.04):
     pre_activation = tf.nn.bias_add(conv, biases)
     #conv = tf.nn.relu(pre_activation, name=scope.name)
     conv = tf.nn.relu(pre_activation, name=_scope)
+    conv = tf.layers.batch_normalization(conv)
      
     _activation_summary(conv)
      
@@ -329,9 +330,10 @@ def resnet(inpt, n):
 
     num_conv = int((n - 20) / 12 + 1)
     layers = []
-
+   
+    layers.append(inpt) 
     with tf.variable_scope('conv0') as scope:
-        conv1 = conv_layer( scope.name, inpt, [5, 5, 1, 16], 1)
+        conv1 = conv_layer( scope.name, layers[-1], [5, 5, 1, 16], 1)
         layers.append(conv1)
 
     with tf.variable_scope('pool0') as scope:
@@ -339,6 +341,7 @@ def resnet(inpt, n):
       pool0 = tf.nn.max_pool(layers[-1], ksize=filter_, strides=filter_, padding='SAME')
       layers.append(pool0)
       print("*****",scope.name,"**pool0**",pool0.get_shape())
+    #'''
     
     for i in range (num_conv):
         with tf.variable_scope('res_%d' % (i+1)) as scope:
@@ -352,8 +355,9 @@ def resnet(inpt, n):
     with tf.variable_scope('pool1') as scope:
       filter_ = [1,2,2,1]
       pool1 = tf.nn.max_pool(layers[-1], ksize=filter_, strides=filter_, padding='SAME')
+      pool1 = tf.layers.batch_normalization(pool1)
       layers.append(pool1)
-      print("*****",scope.name,"**pool1**",pool1.get_shape())
+      print("*****",scope.name,pool1.get_shape())
     
     for i in range (num_conv):
         down_sample = True if i == 0 else False
@@ -363,32 +367,56 @@ def resnet(inpt, n):
             layers.append(conv3_x)
             layers.append(conv3)
 
-        #assert conv3.get_shape().as_list()[1:] == [16, 16, 32]
-     
+    #assert conv3.get_shape().as_list()[1:] == [16, 16, 32]
     with tf.variable_scope('pool2') as scope:
       filter_ = [1,2,2,1]
       pool2 = tf.nn.max_pool(layers[-1], ksize=filter_, strides=filter_, padding='SAME')
+      pool2 = tf.layers.batch_normalization(pool2)
       layers.append(pool2)
-      print("*****",scope.name,"**pool2**",pool2.get_shape())
+      print("*****",scope.name,pool2.get_shape())
    
-    fc1_units = 64 
+    fc0_units = 64 
     for i in range (num_conv):
         down_sample = True if i == 0 else False
         with tf.variable_scope('conv4_%d' % (i+1)) as scope:
-            conv4_x = residual_block(scope.name + '-1' ,layers[-1], fc1_units, down_sample)
-            conv4 = residual_block(scope.name + '-2',conv4_x, fc1_units, False)
+            conv4_x = residual_block(scope.name + '-1' ,layers[-1], fc0_units, down_sample)
+            conv4 = residual_block(scope.name + '-2',conv4_x, fc0_units, False)
             layers.append(conv4_x)
             layers.append(conv4)
-
-        #assert conv4.get_shape().as_list()[1:] == [8, 8, 64]
-
-    with tf.variable_scope('fc') as scope:
+     
+    #assert conv3.get_shape().as_list()[1:] == [16, 16, 32]
+    with tf.variable_scope('pool3') as scope:
+      filter_ = [1,2,2,1]
+      pool3 = tf.nn.max_pool(layers[-1], ksize=filter_, strides=filter_, padding='SAME')
+      pool3 = tf.layers.batch_normalization(pool3)
+      layers.append(pool3)
+      print("*****",scope.name,pool3.get_shape())
+   
+    #assert conv4.get_shape().as_list()[1:] == [8, 8, 64]
+    with tf.variable_scope('flatten') as scope:
         out = tf.layers.flatten( layers[-1], name=scope.name)
-        print("*****",scope.name,"**flatten**",out.get_shape())
+        layers.append(out)
+        print("*****",scope.name,out.get_shape())
+     
+    #assert conv4.get_shape().as_list()[1:] == [8, 8, 64]
+    fc_layers = 2
+    fc_units_increment_factor = 2
+    out_fc_units = fc0_units
+    for i in range(fc_layers):
+      in_fc_units = out_fc_units
+      out_fc_units *=  2
+      with tf.variable_scope('fc_' + str(i+1)) as scope:
+        out = tf.layers.dense( inputs=layers[-1], units=out_fc_units, name=scope.name)
+        out = tf.layers.batch_normalization(out)
+        layers.append(out)
+        print("*****",scope.name,out.get_shape())
+     
+    #assert conv4.get_shape().as_list()[1:] == [8, 8, 64]
+    with tf.variable_scope('final') as scope:
         out = tf.layers.dense( out, NUM_CLASSES, name=scope.name)
         layers.append(out)
-        print("*****",scope.name,"**out**",out.get_shape())
-
+        print("*****",scope.name,out.get_shape())
+     
     return layers[-1]
 
 

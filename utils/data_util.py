@@ -45,7 +45,7 @@ class Data(object):
     mname = "initialize_from_config"
 
     self.no_classes = 5     
-    self.pre_fetch = 1     
+    self.pre_fetch = 4     
     self.batch_random_seed = 1001     
     self.cur_batch_offset = 0 
     self.processing_cnt = 0 
