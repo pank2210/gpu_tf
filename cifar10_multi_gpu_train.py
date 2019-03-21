@@ -56,7 +56,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_dir', '/tmp/cifar10_train',
                            """Directory where to write event logs """
                            """and checkpoint.""")
-tf.app.flags.DEFINE_integer('max_steps', 50,
+tf.app.flags.DEFINE_integer('max_steps', 200,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_integer('num_gpus', 4,
                             """How many GPUs to use.""")
@@ -64,7 +64,7 @@ tf.app.flags.DEFINE_boolean('log_device_placement', False,
                             """Whether to log device placement.""")
 
 
-def tower_loss(scope, images, labels):
+def tower_loss(scope, images, labels, loss_type='losses'):
   """Calculate the total loss on a single tower running the CIFAR model.
 
   Args:
@@ -84,28 +84,35 @@ def tower_loss(scope, images, labels):
 
   # Build the portion of the Graph calculating the losses. Note that we will
   # assemble the total_loss using a custom function below.
-  _ = cifar10.loss(logits, labels)
+  _ = cifar10.loss(logits, labels, loss_type)
   #print("After loss....")
 
   # Assemble all of the losses for the current tower only.
-  losses = tf.get_collection('losses', scope)
+  losses = tf.get_collection( loss_type, scope)
   #losses = tf.get_collection('losses')
   #print("losses len ############",len(losses))
 
   # Calculate the total loss for the current tower.
-  total_loss = tf.add_n(losses, name='total_losses')
+  total_loss = tf.add_n(losses, name='total_' + loss_type)
   #print("total_loss ############",total_loss.get_shape())
+  
+  if loss_type != 'losses':
+    accuracies = tf.get_collection( 'test_accuracy', scope)
+    mean_accuracy = tf.reduce_mean( accuracies)
+     
+    return total_loss, mean_accuracy
+  else:
+    
+    # Attach a scalar summary to all individual losses and the total loss; do the
+    # same for the averaged version of the losses.
+    for l in losses + [total_loss]:
+      # Remove 'tower_[0-9]/' from the name in case this is a multi-GPU training
+      # session. This helps the clarity of presentation on tensorboard.
+      loss_name = re.sub('%s_[0-9]*/' % cifar10.TOWER_NAME, '', l.op.name)
+      #print("loss_name - ",loss_name)
+      tf.summary.scalar(loss_name, l)
 
-  # Attach a scalar summary to all individual losses and the total loss; do the
-  # same for the averaged version of the losses.
-  for l in losses + [total_loss]:
-    # Remove 'tower_[0-9]/' from the name in case this is a multi-GPU training
-    # session. This helps the clarity of presentation on tensorboard.
-    loss_name = re.sub('%s_[0-9]*/' % cifar10.TOWER_NAME, '', l.op.name)
-    #print("loss_name - ",loss_name)
-    tf.summary.scalar(loss_name, l)
-
-  return total_loss
+    return total_loss, None
 
 
 def average_gradients(tower_grads):
@@ -211,7 +218,7 @@ def train():
             # Calculate the loss for one tower of the CIFAR model. This function
             # constructs the entire CIFAR model but shares the variables across
             # all towers.
-            loss = tower_loss(scope, image_batch, label_batch)
+            loss, _ = tower_loss(scope, image_batch, label_batch)
             print("scope - ",scope,"loss #############",loss.get_shape())
 
             # Reuse variables for the next tower.
@@ -226,16 +233,14 @@ def train():
             #validation/Test set 
             loss_type = 'test_losses'
             test_image_batch, test_label_batch = _test_iterator.get_next()
+            test_loss, test_accu = tower_loss(scope, test_image_batch, test_label_batch, loss_type)
+            '''
             logits = cifar10.resnet(inpt=test_image_batch,n=20)
             _ = cifar10.loss(logits, test_label_batch, loss_type=loss_type)
-            '''
-            test_probs = tf.reduce_max(logits,1)
-            _, test_accu = tf.metrics.accuracy(labels=tf.argmax(test_label_batch,1),predictions=tf.argmax(logits,1))
-            tf.add_to_collection( 'test_accuracy', test_accu)
-            '''
             test_accu = tf.get_collection( 'test_accuracy', scope)
             test_loss = tf.get_collection( loss_type, scope)
             total_test_loss = tf.add_n(test_loss, name='total_' + loss_type)
+            '''
              
             '''
             print("grads ############# len ",len(grads))
@@ -284,6 +289,7 @@ def train():
     summary_op = tf.summary.merge(summaries)
 
     # Build an initialization operation to run below.
+    local_var_init = tf.local_variables_initializer()
     init = tf.global_variables_initializer()
 
     # Start running operations on the Graph. allow_soft_placement must be set to
@@ -293,6 +299,7 @@ def train():
         allow_soft_placement=True,
         log_device_placement=FLAGS.log_device_placement))
     sess.run(init)
+    sess.run(local_var_init)
     sess.run(training_init_op)
     sess.run(test_init_op)
 

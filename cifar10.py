@@ -692,13 +692,7 @@ def loss(logits, labels, loss_type='losses'):
     _, test_accu = tf.metrics.accuracy(labels=tf.argmax(labels,1),
                                        predictions=tf.argmax(logits,1))
     tf.add_to_collection( 'test_accuracy', test_accu)
-
-  # The total loss is defined as the cross entropy loss plus all of the weight
-  # decay terms (L2 loss).
-  #tf.add_n( cross_entropy_mean, name='total_loss')
-   
-  #losses =  tf.get_collection('losses')
-  #print("losses","================",losses.get_shape())
+     
   return tf.add_n(tf.get_collection(loss_type), name='total_' + loss_type)
 
 def _add_loss_summaries(total_loss, loss_type='losses'):
