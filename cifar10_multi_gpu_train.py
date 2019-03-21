@@ -56,7 +56,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_dir', '/tmp/cifar10_train',
                            """Directory where to write event logs """
                            """and checkpoint.""")
-tf.app.flags.DEFINE_integer('max_steps', 100000,
+tf.app.flags.DEFINE_integer('max_steps', 50,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_integer('num_gpus', 4,
                             """How many GPUs to use.""")
@@ -93,7 +93,7 @@ def tower_loss(scope, images, labels):
   #print("losses len ############",len(losses))
 
   # Calculate the total loss for the current tower.
-  total_loss = tf.add_n(losses, name='total_loss')
+  total_loss = tf.add_n(losses, name='total_losses')
   #print("total_loss ############",total_loss.get_shape())
 
   # Attach a scalar summary to all individual losses and the total loss; do the
@@ -189,8 +189,17 @@ def train():
     data = du.Data(jfilepath='config/config.json')
     data.set_batch_size( FLAGS.batch_size)
     data.set_no_classes( FLAGS.no_classes)
+    
+    #training dataset
+    data.set_data_file('train')
     _dataset,_iterator = data.get_iterator()
     training_init_op = _iterator.make_initializer(_dataset)
+    
+    #training dataset
+    data.set_data_file('test')
+    _test_dataset, _test_iterator = data.get_iterator()
+    test_init_op = _test_iterator.make_initializer(_test_dataset)
+    
     # Calculate the gradients for each model tower.
     tower_grads = []
     with tf.variable_scope(tf.get_variable_scope()):
@@ -210,9 +219,24 @@ def train():
 
             # Retain the summaries from the final tower.
             summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope)
-
+             
             # Calculate the gradients for the batch of data on this CIFAR tower.
             grads = opt.compute_gradients(loss)
+             
+            #validation/Test set 
+            loss_type = 'test_losses'
+            test_image_batch, test_label_batch = _test_iterator.get_next()
+            logits = cifar10.resnet(inpt=test_image_batch,n=20)
+            _ = cifar10.loss(logits, test_label_batch, loss_type=loss_type)
+            '''
+            test_probs = tf.reduce_max(logits,1)
+            _, test_accu = tf.metrics.accuracy(labels=tf.argmax(test_label_batch,1),predictions=tf.argmax(logits,1))
+            tf.add_to_collection( 'test_accuracy', test_accu)
+            '''
+            test_accu = tf.get_collection( 'test_accuracy', scope)
+            test_loss = tf.get_collection( loss_type, scope)
+            total_test_loss = tf.add_n(test_loss, name='total_' + loss_type)
+             
             '''
             print("grads ############# len ",len(grads))
             for i,grad in enumerate(grads):
@@ -231,6 +255,7 @@ def train():
 
     # Add a summary to track the learning rate.
     summaries.append(tf.summary.scalar('learning_rate', lr))
+    summaries.append(tf.summary.scalar('tower_loss', loss))
 
     # Add histograms for gradients.
     for grad, var in grads:
@@ -269,6 +294,7 @@ def train():
         log_device_placement=FLAGS.log_device_placement))
     sess.run(init)
     sess.run(training_init_op)
+    sess.run(test_init_op)
 
     # Start the queue runners.
     #tf.train.start_queue_runners(sess=sess)
@@ -283,14 +309,16 @@ def train():
       assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
 
       if step % 10 == 0:
+        test_accu_value, test_loss_value = sess.run([test_accu, test_loss])
         num_examples_per_step = FLAGS.batch_size * FLAGS.num_gpus
         examples_per_sec = num_examples_per_step / duration
         sec_per_batch = duration / FLAGS.num_gpus
 
-        format_str = ('%s: step %d, loss = %.2f (%.1f examples/sec; %.3f '
-                      'sec/batch)')
+        format_str = ('%s: step %d, loss=%.2f (%.1f examples/sec; %.3f '
+                      'sec/batch) test loss[%.4f] test accu[%.2f]')
         print (format_str % (datetime.now(), step, loss_value,
-                             examples_per_sec, sec_per_batch))
+                             examples_per_sec, sec_per_batch, 
+                             test_loss_value, test_accu_value))
 
       if step % 100 == 0:
         summary_str = sess.run(summary_op)

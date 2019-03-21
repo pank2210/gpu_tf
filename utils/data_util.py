@@ -81,6 +81,7 @@ class Data(object):
     self.log( mname, "channels[{}]".format(self.channels), level=3)
      
     self.myImg_config = cutil.Config(configid="myConfId",cdir=self.cdir)
+    self.data_file = 'train'
    
   def load_train_data(self):
     mname = "load_train_data"
@@ -449,6 +450,11 @@ class Data(object):
      
     return True
   
+  def set_data_file(self,data_file):
+    self.data_file = data_file
+     
+    return True
+  
   def set_batch_size(self,batch_size):
     self.batch_size = batch_size
      
@@ -637,11 +643,11 @@ class Data(object):
     
     return (x_test, y_test)
      
-  def image_generator(self,mode="train"):
+  def image_generator(self):
     #initialize all variables... 
     mname = 'image_data_generator'
     
-    fd = open( self.train_data_dir + mode + '_df.csv', 'r')
+    fd = open( self.train_data_dir + self.data_file + '_df.csv', 'r')
     
     while True:
       n_img_w = self.img_width
@@ -651,7 +657,7 @@ class Data(object):
       #x_train = np.zeros(( tot_cnt, n_img_w, n_img_h, 3), dtype='uint8')
       #x_img_buf = np.empty(( n_img_w, n_img_h), dtype='uint8')
       x_buf = np.zeros(( n_img_w, n_img_h, channels), dtype='uint8')
-      y_buf = np.zeros((1),dtype='uint8')
+      y_buf = 0
        
       #loop in through dataframe. 
       #self.log( mname, "[{}] recs for set.".format(img_cnt), level=3)
@@ -695,10 +701,10 @@ class Data(object):
         file_missing += 1
          
       #create y array as required
-      y_buf = np.array( label, dtype='uint8')
-      y_buf = y_buf.astype('float32')
-      y_buf = np.reshape( y_buf, (1))
-      y_buf = keras.utils.to_categorical(y_buf, self.no_classes)
+      #y_buf = np.array( label, dtype='uint8')
+      #y_buf = y_buf.astype('float32')
+      #y_buf = np.reshape( y_buf, (1))
+      y_buf = keras.utils.to_categorical( label, self.no_classes)
       #y_buf = np.reshape( y_buf, (self.no_classes,1))
       #print("XXXXX",image_id,label,y_buf,y_buf.shape)
        
@@ -731,7 +737,7 @@ class Data(object):
                  (tf.float32, tf.float32), \
                  #(tf.uint8, tf.float32, tf.int64), \
                  #(tf.TensorShape([self.img_width,self.img_heigth]),tf.TensorShape([1,5],tf.TensorShape[1])))
-                 (tf.TensorShape([self.img_width,self.img_heigth,self.channels]),tf.TensorShape([1,self.no_classes])))
+                 (tf.TensorShape([self.img_width,self.img_heigth,self.channels]),tf.TensorShape([self.no_classes])))
     dataset = dataset.batch(self.batch_size)
     dataset = dataset.shuffle(buffer_size=self.pre_fetch*self.batch_size,seed=self.batch_random_seed)
     _iterator = dataset.make_initializable_iterator()
