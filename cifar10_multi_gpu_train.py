@@ -56,7 +56,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_dir', '/tmp/cifar10_train',
                            """Directory where to write event logs """
                            """and checkpoint.""")
-tf.app.flags.DEFINE_integer('max_steps', 200,
+tf.app.flags.DEFINE_integer('max_steps', 15000,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_integer('num_gpus', 4,
                             """How many GPUs to use.""")
@@ -188,7 +188,7 @@ def train():
     opt = tf.train.GradientDescentOptimizer(lr)
 
     # Get images and labels for CIFAR-10.
-    '''PP
+    '''
     images, labels = cifar10.distorted_inputs()
     batch_queue = tf.contrib.slim.prefetch_queue.prefetch_queue(
           [images, labels], capacity=2 * FLAGS.num_gpus)
@@ -235,14 +235,6 @@ def train():
             test_image_batch, test_label_batch = _test_iterator.get_next()
             test_loss, test_accu = tower_loss(scope, test_image_batch, test_label_batch, loss_type)
             '''
-            logits = cifar10.resnet(inpt=test_image_batch,n=20)
-            _ = cifar10.loss(logits, test_label_batch, loss_type=loss_type)
-            test_accu = tf.get_collection( 'test_accuracy', scope)
-            test_loss = tf.get_collection( loss_type, scope)
-            total_test_loss = tf.add_n(test_loss, name='total_' + loss_type)
-            '''
-             
-            '''
             print("grads ############# len ",len(grads))
             for i,grad in enumerate(grads):
               for j,g in enumerate(grad):
@@ -261,6 +253,8 @@ def train():
     # Add a summary to track the learning rate.
     summaries.append(tf.summary.scalar('learning_rate', lr))
     summaries.append(tf.summary.scalar('tower_loss', loss))
+    summaries.append(tf.summary.scalar('test_accu', test_accu))
+    summaries.append(tf.summary.scalar('test_loss', test_loss))
 
     # Add histograms for gradients.
     for grad, var in grads:
@@ -302,7 +296,7 @@ def train():
     sess.run(local_var_init)
     sess.run(training_init_op)
     sess.run(test_init_op)
-
+     
     # Start the queue runners.
     #tf.train.start_queue_runners(sess=sess)
 
