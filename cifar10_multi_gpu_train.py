@@ -62,6 +62,12 @@ tf.app.flags.DEFINE_integer('num_gpus', 4,
                             """How many GPUs to use.""")
 tf.app.flags.DEFINE_boolean('log_device_placement', False,
                             """Whether to log device placement.""")
+tf.app.flags.DEFINE_string('eval_dir', '/tmp/cifar10_eval',
+                           """Directory where to write event logs.""")
+tf.app.flags.DEFINE_string('eval_data', 'test',
+                           """Either 'test' or 'train_eval'.""")
+tf.app.flags.DEFINE_string('checkpoint_dir', '/tmp/cifar10_train',
+                           """Directory where to read model checkpoints.""")
 
 
 def tower_loss(scope, images, labels, loss_type='losses'):
@@ -331,13 +337,106 @@ def train():
         saver.save(sess, checkpoint_path, global_step=step)
 
 
-def main(argv=None):  # pylint: disable=unused-argument
-  cifar10.maybe_download_and_extract()
-  if tf.gfile.Exists(FLAGS.train_dir):
-    tf.gfile.DeleteRecursively(FLAGS.train_dir)
-  tf.gfile.MakeDirs(FLAGS.train_dir)
-  train()
+def test(test_examples):
+  """Train CIFAR-10 for a number of steps."""
+  with tf.Graph().as_default(), tf.device('/cpu:0'):
+    data = du.Data(jfilepath='config/config.json')
+    data.set_batch_size( FLAGS.batch_size)
+    data.set_no_classes( FLAGS.no_classes)
+    
+    #training dataset
+    data.set_data_file('test')
+    _test_dataset, _test_iterator = data.get_iterator()
+    test_init_op = _test_iterator.make_initializer(_test_dataset)
+     
+    tower_grads = []
+    with tf.variable_scope(tf.get_variable_scope(),reuse=tf.AUTO_REUSE):
+      for i in xrange(FLAGS.num_gpus):
+        with tf.device('/gpu:%d' % i):
+          with tf.name_scope('%s_%d' % (cifar10.TOWER_NAME, i)) as scope:
+            # Retain the summaries from the final tower.
+            summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope)
+             
+            #validation/Test set 
+            loss_type = 'test_losses'
+            test_image_batch, test_label_batch = _test_iterator.get_next()
+            test_loss, test_accu = tower_loss(scope, test_image_batch, test_label_batch, loss_type)
+    # Build the summary operation based on the TF collection of Summaries.
+    #summary_writer = tf.summary.FileWriter(FLAGS.eval_dir, g)
+    summaries.append(tf.summary.scalar('test_accu', test_accu))
+    summaries.append(tf.summary.scalar('test_loss', test_loss))
 
+    # Build the summary operation from the last tower summaries.
+    summary_op = tf.summary.merge_all()
+    summary_op = tf.summary.merge(summaries)
+     
+    # Build an initialization operation to run below.
+    local_var_init = tf.local_variables_initializer()
+    #init = tf.global_variables_initializer()
+     
+    # Start running operations on the Graph. allow_soft_placement must be set to
+    # True to build towers on GPU, as some of the ops do not have GPU
+    # implementations.
+    sess = tf.Session(config=tf.ConfigProto(
+        allow_soft_placement=True,
+        log_device_placement=FLAGS.log_device_placement))
+     
+    variable_averages = tf.train.ExponentialMovingAverage(
+        cifar10.MOVING_AVERAGE_DECAY)
+    variables_to_restore = variable_averages.variables_to_restore()
+     
+    saver = tf.train.Saver(variables_to_restore)
+    ckpt = tf.train.get_checkpoint_state(FLAGS.checkpoint_dir)
+    if ckpt and ckpt.model_checkpoint_path:
+      # Restores from checkpoint
+      saver.restore(sess, ckpt.model_checkpoint_path)
+      # Assuming model_checkpoint_path looks something like:
+      #   /my-favorite-path/cifar10_train/model.ckpt-0,
+      # extract global_step from it.
+      global_step = ckpt.model_checkpoint_path.split('/')[-1].split('-')[-1]
+    else:
+      print('No checkpoint file found')
+      return
+    #sess.run(init)
+    sess.run(local_var_init)
+    #sess.run(training_init_op)
+    sess.run(test_init_op)
+     
+    # Start the queue runners.
+    #tf.train.start_queue_runners(sess=sess)
+
+    summary_writer = tf.summary.FileWriter(FLAGS.eval_dir, sess.graph)
+
+    for step in xrange(test_examples):
+      start_time = time.time()
+      test_accu_value, test_loss_value = sess.run([test_accu, test_loss])
+      duration = time.time() - start_time
+
+      #assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
+
+      if step % 10 == 0:
+        format_str = ('%s: step %d, loss=%.2f '
+                      'test accuracy[%.2f]')
+        print (format_str % (datetime.now(), step,
+                             test_loss_value, test_accu_value))
+
+      if step % 100 == 0:
+        summary_str = sess.run(summary_op)
+        summary_writer.add_summary(summary_str, step)
+
+def main(argv=None):  # pylint: disable=unused-argument
+  mode = 'test'
+  #cifar10.maybe_download_and_extract()
+  if mode == 'train':
+    if tf.gfile.Exists(FLAGS.train_dir):
+      tf.gfile.DeleteRecursively(FLAGS.train_dir)
+    tf.gfile.MakeDirs(FLAGS.train_dir)
+    train()
+  else:
+    if tf.gfile.Exists(FLAGS.eval_dir):
+      tf.gfile.DeleteRecursively(FLAGS.eval_dir)
+    tf.gfile.MakeDirs(FLAGS.eval_dir)
+    test(test_examples=200)
 
 if __name__ == '__main__':
   tf.app.run()

@@ -739,7 +739,8 @@ class Data(object):
                  #(tf.TensorShape([self.img_width,self.img_heigth]),tf.TensorShape([1,5],tf.TensorShape[1])))
                  (tf.TensorShape([self.img_width,self.img_heigth,self.channels]),tf.TensorShape([self.no_classes])))
     dataset = dataset.batch(self.batch_size)
-    dataset = dataset.shuffle(buffer_size=self.pre_fetch*self.batch_size,seed=self.batch_random_seed)
+    if self.data_file != 'test':
+       dataset = dataset.shuffle(buffer_size=self.pre_fetch*self.batch_size,seed=self.batch_random_seed)
     _iterator = dataset.make_initializable_iterator()
     #_iterator = dataset.make_one_shot_iterator()
      
