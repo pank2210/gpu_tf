@@ -691,9 +691,14 @@ def loss(logits, labels, loss_type='losses'):
   if loss_type != 'losses':
     _, test_accu = tf.metrics.accuracy(labels=tf.argmax(labels,1),
                                        predictions=tf.argmax(logits,1))
+    preds = tf.argmax( logits, 1)
+    probs = tf.reduce_max( logits, 1)
     tf.add_to_collection( 'test_accuracy', test_accu)
-     
-  return tf.add_n(tf.get_collection(loss_type), name='total_' + loss_type)
+    #tf.add_to_collection( 'test_preds', preds)
+    #tf.add_to_collection( 'test_probs', probs)
+    return preds, probs
+  else:
+    return tf.add_n(tf.get_collection(loss_type), name='total_' + loss_type)
 
 def _add_loss_summaries(total_loss, loss_type='losses'):
   """Add summaries for losses in CIFAR-10 model.

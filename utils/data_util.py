@@ -727,17 +727,17 @@ class Data(object):
       _id = tf.cast(m[0][0],tf.int64)
       ''' 
        
-      yield (x_buf, y_buf)
+      yield (image_id,x_buf, y_buf)
       #yield (x_buf, y_buf, _id)
    
   def get_iterator(self):
      
     dataset = tf.data.Dataset.from_generator( \
                  self.image_generator, \
-                 (tf.float32, tf.float32), \
+                 (tf.string,tf.float32, tf.float32), \
                  #(tf.uint8, tf.float32, tf.int64), \
                  #(tf.TensorShape([self.img_width,self.img_heigth]),tf.TensorShape([1,5],tf.TensorShape[1])))
-                 (tf.TensorShape([self.img_width,self.img_heigth,self.channels]),tf.TensorShape([self.no_classes])))
+                 (tf.TensorShape(None),tf.TensorShape([self.img_width,self.img_heigth,self.channels]),tf.TensorShape([self.no_classes])))
     dataset = dataset.batch(self.batch_size)
     if self.data_file != 'test':
        dataset = dataset.shuffle(buffer_size=self.pre_fetch*self.batch_size,seed=self.batch_random_seed)

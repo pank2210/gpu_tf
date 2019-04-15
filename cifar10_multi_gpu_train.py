@@ -56,7 +56,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_dir', '/tmp/cifar10_train',
                            """Directory where to write event logs """
                            """and checkpoint.""")
-tf.app.flags.DEFINE_integer('max_steps', 15000,
+tf.app.flags.DEFINE_integer('max_steps', 100,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_integer('num_gpus', 4,
                             """How many GPUs to use.""")
@@ -90,7 +90,10 @@ def tower_loss(scope, images, labels, loss_type='losses'):
 
   # Build the portion of the Graph calculating the losses. Note that we will
   # assemble the total_loss using a custom function below.
-  _ = cifar10.loss(logits, labels, loss_type)
+  if loss_type != 'losses':
+    preds, probs = cifar10.loss(logits, labels, loss_type)
+  else:
+    _ = cifar10.loss(logits, labels, loss_type)
   #print("After loss....")
 
   # Assemble all of the losses for the current tower only.
@@ -106,7 +109,7 @@ def tower_loss(scope, images, labels, loss_type='losses'):
     accuracies = tf.get_collection( 'test_accuracy', scope)
     mean_accuracy = tf.reduce_mean( accuracies)
      
-    return total_loss, mean_accuracy
+    return total_loss, mean_accuracy, preds, probs
   else:
     
     # Attach a scalar summary to all individual losses and the total loss; do the
@@ -220,7 +223,7 @@ def train():
         with tf.device('/gpu:%d' % i):
           with tf.name_scope('%s_%d' % (cifar10.TOWER_NAME, i)) as scope:
             # Dequeues one batch for the GPU
-            image_batch, label_batch = _iterator.get_next()
+            _, image_batch, label_batch = _iterator.get_next()
             # Calculate the loss for one tower of the CIFAR model. This function
             # constructs the entire CIFAR model but shares the variables across
             # all towers.
@@ -238,8 +241,8 @@ def train():
              
             #validation/Test set 
             loss_type = 'test_losses'
-            test_image_batch, test_label_batch = _test_iterator.get_next()
-            test_loss, test_accu = tower_loss(scope, test_image_batch, test_label_batch, loss_type)
+            _, test_image_batch, test_label_batch = _test_iterator.get_next()
+            test_loss, test_accu, _, _ = tower_loss(scope, test_image_batch, test_label_batch, loss_type)
             '''
             print("grads ############# len ",len(grads))
             for i,grad in enumerate(grads):
@@ -359,8 +362,8 @@ def test(test_examples):
              
             #validation/Test set 
             loss_type = 'test_losses'
-            test_image_batch, test_label_batch = _test_iterator.get_next()
-            test_loss, test_accu = tower_loss(scope, test_image_batch, test_label_batch, loss_type)
+            _, test_image_batch, test_label_batch = _test_iterator.get_next()
+            test_loss, test_accu, _, _ = tower_loss(scope, test_image_batch, test_label_batch, loss_type)
     # Build the summary operation based on the TF collection of Summaries.
     #summary_writer = tf.summary.FileWriter(FLAGS.eval_dir, g)
     summaries.append(tf.summary.scalar('test_accu', test_accu))
@@ -425,9 +428,11 @@ def test(test_examples):
         summary_writer.add_summary(summary_str, step)
 
 def main(argv=None):  # pylint: disable=unused-argument
-  mode = 'test'
+  mode = 'train'
   #cifar10.maybe_download_and_extract()
-  if mode == 'train':
+  if len(argv) > 0:
+    print("Running mode - [%s]" % argv[1])
+  if mode == 'test':
     if tf.gfile.Exists(FLAGS.train_dir):
       tf.gfile.DeleteRecursively(FLAGS.train_dir)
     tf.gfile.MakeDirs(FLAGS.train_dir)
