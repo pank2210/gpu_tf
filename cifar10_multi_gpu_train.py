@@ -40,6 +40,7 @@ from __future__ import division
 from __future__ import print_function
 
 from datetime import datetime
+import os
 import os.path
 import re
 import time
@@ -346,6 +347,7 @@ def test(test_examples):
     data = du.Data(jfilepath='config/config.json')
     data.set_batch_size( FLAGS.batch_size)
     data.set_no_classes( FLAGS.no_classes)
+    test_out_file = FLAGS.train_dir + 'test_out_df.csv'
     
     #training dataset
     data.set_data_file('test')
@@ -362,8 +364,8 @@ def test(test_examples):
              
             #validation/Test set 
             loss_type = 'test_losses'
-            _, test_image_batch, test_label_batch = _test_iterator.get_next()
-            test_loss, test_accu, _, _ = tower_loss(scope, test_image_batch, test_label_batch, loss_type)
+            test_image_ids, test_image_batch, test_label_batch = _test_iterator.get_next()
+            test_loss, test_accu, test_preds, test_probs = tower_loss(scope, test_image_batch, test_label_batch, loss_type)
     # Build the summary operation based on the TF collection of Summaries.
     #summary_writer = tf.summary.FileWriter(FLAGS.eval_dir, g)
     summaries.append(tf.summary.scalar('test_accu', test_accu))
@@ -410,9 +412,15 @@ def test(test_examples):
 
     summary_writer = tf.summary.FileWriter(FLAGS.eval_dir, sess.graph)
 
+    a_image_ids = []
+    a_preds = []
+    a_probs = []
     for step in xrange(test_examples):
       start_time = time.time()
-      test_accu_value, test_loss_value = sess.run([test_accu, test_loss])
+      test_accu_value, test_loss_value, test_image_ids_value, test_preds_value, test_probs_value = sess.run([test_accu, test_loss, test_image_ids, test_preds, test_probs])
+      a_image_ids.append(test_image_ids_value)
+      a_preds.append(test_preds_value)
+      a_probs.append(test_preds_value)
       duration = time.time() - start_time
 
       #assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
@@ -426,6 +434,11 @@ def test(test_examples):
       if step % 100 == 0:
         summary_str = sess.run(summary_op)
         summary_writer.add_summary(summary_str, step)
+    o_fd = open( test_out_file, 'w')
+    for i,ids in enumerate(a_image_ids):
+      for j,id in enumerate(ids):
+        o_fd.write("%s,%d,%.5f\n" % (a_image_ids[i][j],a_preds[i][j],a_probs[i][j]))
+    o_fd.close()
 
 def main(argv=None):  # pylint: disable=unused-argument
   mode = 'train'
