@@ -192,7 +192,7 @@ class Data(object):
     self.df.to_csv( self.train_data_dir + 'u_img_set.csv')
      
    
-  def load_data_as_greyscale(self):
+  def load_data_as_greyscale( self, from_index=0, batch_size=2500):
     mname = "load_data_as_greyscale"
      
     self.log( mname, "Loading Dataframe from [{}]".format(self.train_label_data_file), level=3)
@@ -226,7 +226,12 @@ class Data(object):
      
     #loop in through dataframe. 
     for i,rec in self.df.iterrows():
-      #if cnt >= 50:
+      if cnt < from_index:
+        cnt += 1
+        continue
+      else:
+        if cnt >= (from_index+batch_size):
+          break
       #  break
        
       progress_sts = "%6d out of %6d" % (cnt,tot_cnt)
@@ -749,12 +754,12 @@ class Data(object):
 if __name__ == "__main__":
   #prep_data()
   data = Data()
-  a1 = tf.Variable( 0, dtype='uint8')
-  #data.load_data_as_greyscale()
-  #data.load_img_data()
+  #a1 = tf.Variable( 0, dtype='uint8')
+  #data.load_data_as_greyscale( from_index=27500, batch_size=2500)
    
-  #data.initialize_for_batch_load()
-  #'''
+  #data.load_img_data()
+  data.initialize_for_batch_load()
+  '''
   with tf.Graph().as_default(), tf.device('/cpu:0'):
   #with tf.Session() as sess:
       #iterator = data.get_iterator()
@@ -781,3 +786,4 @@ if __name__ == "__main__":
         sess.run(x,init_op)   
         #sess.run(training_init_op)   
         print("a1=%d" % (sess.run(a1)))
+  '''

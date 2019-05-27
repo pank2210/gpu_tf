@@ -46,6 +46,7 @@ import re
 import time
 
 import numpy as np
+import pandas as pd
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 import cifar10
@@ -57,9 +58,9 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_dir', '/tmp/cifar10_train',
                            """Directory where to write event logs """
                            """and checkpoint.""")
-tf.app.flags.DEFINE_integer('max_steps', 100,
+tf.app.flags.DEFINE_integer('max_steps', 500,
                             """Number of batches to run.""")
-tf.app.flags.DEFINE_integer('num_gpus', 4,
+tf.app.flags.DEFINE_integer('num_gpus', 2,
                             """How many GPUs to use.""")
 tf.app.flags.DEFINE_boolean('log_device_placement', False,
                             """Whether to log device placement.""")
@@ -212,7 +213,7 @@ def train():
     _dataset,_iterator = data.get_iterator()
     training_init_op = _iterator.make_initializer(_dataset)
     
-    #training dataset
+    #test dataset
     data.set_data_file('test')
     _test_dataset, _test_iterator = data.get_iterator()
     test_init_op = _test_iterator.make_initializer(_test_dataset)
@@ -251,7 +252,7 @@ def train():
                 print(i,j,"grad +++",g)
             print("grads #############",grads.get_shape())
             '''
-
+             
             # Keep track of the gradients across all towers.
             tower_grads.append(grads)
             #print("tower_grads ############# len ",len(tower_grads))
@@ -347,7 +348,7 @@ def test(test_examples):
     data = du.Data(jfilepath='config/config.json')
     data.set_batch_size( FLAGS.batch_size)
     data.set_no_classes( FLAGS.no_classes)
-    test_out_file = FLAGS.train_dir + 'test_out_df.csv'
+    test_out_file = FLAGS.train_dir + '/test_out_df.csv'
     
     #training dataset
     data.set_data_file('test')
@@ -415,37 +416,60 @@ def test(test_examples):
     a_image_ids = []
     a_preds = []
     a_probs = []
+    a_labels = []
+     
     for step in xrange(test_examples):
       start_time = time.time()
-      test_accu_value, test_loss_value, test_image_ids_value, test_preds_value, test_probs_value = sess.run([test_accu, test_loss, test_image_ids, test_preds, test_probs])
+      test_accu_value, test_loss_value, test_image_ids_value, test_label_value, test_preds_value, test_probs_value = sess.run([test_accu, test_loss, test_image_ids, test_label_batch, test_preds, test_probs])
       a_image_ids.append(test_image_ids_value)
       a_preds.append(test_preds_value)
-      a_probs.append(test_preds_value)
+      a_labels.append(test_label_value)
+      a_probs.append(test_probs_value)
       duration = time.time() - start_time
-
+       
       #assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
-
+       
       if step % 10 == 0:
         format_str = ('%s: step %d, loss=%.2f '
                       'test accuracy[%.2f]')
         print (format_str % (datetime.now(), step,
                              test_loss_value, test_accu_value))
-
+       
       if step % 100 == 0:
         summary_str = sess.run(summary_op)
         summary_writer.add_summary(summary_str, step)
     o_fd = open( test_out_file, 'w')
+    o_fd.write("%s,%s,%s,%s\n" % ('img_id','label','pred','prob'))
     for i,ids in enumerate(a_image_ids):
       for j,id in enumerate(ids):
-        o_fd.write("%s,%d,%.5f\n" % (a_image_ids[i][j],a_preds[i][j],a_probs[i][j]))
+        o_fd.write("%s,%d,%d,%.5f\n" % (a_image_ids[i][j],np.argmax(a_labels[i][j]),a_preds[i][j],a_probs[i][j]))
     o_fd.close()
+    print_groups(test_out_file)
+  
+def print_groups(i_file,g_count_key='prob',g_keys=['label','pred'],g_sort_keys=['label','pred']):
+  fname = 'print_groups'
+   
+  df = pd.read_csv( i_file)
+  #df.intent = df.intent.fillna('NA')
+  g_df = df[ \
+      #(df.status_code != 200) & \
+      (df[g_count_key] > 0) \
+          ] \
+      .groupby(g_keys) \
+      [g_count_key].count() \
+      .nlargest(1000) \
+      .reset_index(name='count') \
+      .sort_values( g_sort_keys, ascending=True)
+  print(g_df)
 
 def main(argv=None):  # pylint: disable=unused-argument
   mode = 'train'
   #cifar10.maybe_download_and_extract()
   if len(argv) > 0:
     print("Running mode - [%s]" % argv[1])
-  if mode == 'test':
+  #print_groups(i_file='/tmp/cifar10_train/test_out_df.csv')
+  #'''
+  if mode == 'train':
     if tf.gfile.Exists(FLAGS.train_dir):
       tf.gfile.DeleteRecursively(FLAGS.train_dir)
     tf.gfile.MakeDirs(FLAGS.train_dir)
@@ -454,7 +478,8 @@ def main(argv=None):  # pylint: disable=unused-argument
     if tf.gfile.Exists(FLAGS.eval_dir):
       tf.gfile.DeleteRecursively(FLAGS.eval_dir)
     tf.gfile.MakeDirs(FLAGS.eval_dir)
-    test(test_examples=200)
+    test(test_examples=150)
+  #'''
 
 if __name__ == '__main__':
   tf.app.run()

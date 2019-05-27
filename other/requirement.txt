@@ -1,0 +1,8 @@
+numpy
+pandas
+matplotlib
+psutil
+keras
+dpath
+scipy
+scikit-image

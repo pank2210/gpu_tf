@@ -1,16 +1,16 @@
 {
   "common": {
         "verbose": 4,
-        "cdir": "/scratch/gpu_tf/",
-        "data_dir_path": "/scratch/data/"
+        "cdir": "/data1/ret/gpu_tf/",
+        "data_dir_path": "/data1/data/"
      },
   "img": {
         "channels": 1,
         "img_processing_capacity": 0,
-        "img_width": 2500,
-        "img_heigth": 2500,
-        "img_dir_path": "/scratch/data/croped/",
-        "img_croped_dir_path": "/scratch/data/croped/",
+        "img_width": 2000,
+        "img_heigth": 2000,
+        "img_dir_path": "/data1/data/croped/",
+        "img_croped_dir_path": "/data1/data/croped/",
         "img_filename_ext": ".jpeg"
      },
   "train": {
@@ -24,7 +24,7 @@
                "random_seed": 1001,
                "training_dataset_ratio": 0.8,
                "validation_dataset_ratio": 0.05,
-               "batch_size": 3,
+               "batch_size": 32,
                "lr_rate": 0.001
            }
      }

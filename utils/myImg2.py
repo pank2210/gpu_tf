@@ -30,7 +30,7 @@ class myImg(object):
       self.ekey = ekey
       self.key = self.__class__.__name__
      
-      #self.logger.log( "myImg instance initialization. id[{}] key[{}] ekey[{}] imgpath[{}]".format(self.id,self.key,self.ekey,self.config.idir + path))
+      self.logger.log( "myImg instance initialization. id[{}] key[{}] ekey[{}] imgpath[{}]".format(self.id,self.key,self.ekey,self.config.idir + path))
      
       #img param which is numpy image array takes precedence over path 
       #If path is passed along with img then path will be overwritten with img content as .jpg
@@ -60,7 +60,7 @@ class myImg(object):
 
       self.setImageMetadata()      
       self.imgdict = {} #initialize image dictionay
-      self.logger.log( "myImage instance initialization. id[{}] configid[{}] imgpath[{}]".format(self.id,self.config.id,self.imgpath))
+      #self.logger.log( "myImage instance initialization. id[{}] configid[{}] imgpath[{}]".format(self.id,self.config.id,self.imgpath))
    
    def setImageMetadata(self):
       self.size = self.img.size
@@ -511,8 +511,11 @@ def main(argv=None):
 
 if __name__ == "__main__":
    #main(sys.argv[1:])
-   i_imgpath = '/scratch/data/croped/10003_left.jpeg'
-   i_cdir = './'
+   #i_imgpath = '/data1/data/img/15916_right.jpeg'
+   i_imgpath = '/data1/data/croped/15916_right.jpeg'
+   #i_imgpath = '/tmp/15916_right.jpeg'
+   #i_imgpath = '/tmp/img/15916_right.jpeg'
+   i_cdir = '/tmp/'
    print("Input image file is [{}]".format(i_imgpath))
    print("Input working directory is [{}]".format(i_cdir))
 
@@ -520,3 +523,9 @@ if __name__ == "__main__":
    img1 = myImg(imageid="xx",config=config,ekey='x123',path=i_imgpath)
    #img1.saveImage()
    img1.printImageProp()
+   
+   ''' 
+   img1.getGreyScaleImage2(convertFlag=True) 
+   img1.padImage(2000,2000)
+   img1.saveImage(img_type_ext='.jpeg',gen_new_filename=True)
+   ''' 
