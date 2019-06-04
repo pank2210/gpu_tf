@@ -9,8 +9,8 @@
         "img_processing_capacity": 0,
         "img_width": 2000,
         "img_heigth": 2000,
-        "img_dir_path": "/data1/data/croped/",
-        "img_croped_dir_path": "/data1/data/croped/",
+        "img_dir_path": "/data1/data/croped_color/",
+        "img_croped_dir_path": "/data1/data/croped_color/",
         "img_filename_ext": ".jpeg"
      },
   "train": {

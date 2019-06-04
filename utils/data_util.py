@@ -14,6 +14,7 @@ sys.path.append('../')
 from utils import config as cutil
 from utils import json_util as jutil
 from utils import myImg2 as myimg
+from utils import cmdopt_util as cmd_util
 
 #tf.enable_eager_execution()
 
@@ -192,10 +193,11 @@ class Data(object):
     self.df.to_csv( self.train_data_dir + 'u_img_set.csv')
      
    
-  def load_data_as_greyscale( self, from_index=0, batch_size=2500):
-    mname = "load_data_as_greyscale"
+  def preprocess_images( self, convert_to_greyscale=True, from_index=0, batch_size=10):
+    mname = "preprocess_images"
      
-    self.log( mname, "Loading Dataframe from [{}]".format(self.train_label_data_file), level=3)
+    self.log( mname, "Loading Dataframe from [%s] from_index[%d] batch_size[%d]" % (self.train_label_data_file,from_index,batch_size), level=3)
+    print( mname, "Loading Dataframe from [%s] from_index[%d] batch_size[%d]" % (self.train_label_data_file,from_index,batch_size))
     self.df = pd.read_csv( self.train_label_data_file)
     self.log( mname, "Loaded [{}] recs".format(self.df['level'].count()), level=3)
      
@@ -218,24 +220,23 @@ class Data(object):
     cnt = 0
     file_missing = 0
      
-    #x_train = np.zeros(( tot_cnt, n_img_w, n_img_h, 3), dtype='uint8')
-    x_train = np.zeros(( 0, n_img_w, n_img_h), dtype='uint8')
-    x_img_buf = np.empty(( 1, n_img_w, n_img_h), dtype='uint8')
-    y_buf = []
-    y_train = np.empty((0,1),dtype='uint8')
-     
     #loop in through dataframe. 
     for i,rec in self.df.iterrows():
       if cnt < from_index:
+        progress_sts = "Skipping %6d" % (cnt)
+        sys.stdout.write(progress_sts)
+        sys.stdout.write("\b" * len(progress_sts)) # return to start of line, after '['
+        sys.stdout.flush()
         cnt += 1
+         
         continue
-      else:
+      else: 
         if cnt >= (from_index+batch_size):
           break
-      #  break
        
       progress_sts = "%6d out of %6d" % (cnt,tot_cnt)
-      sys.stdout.write("%6d out of %6d" % (cnt,tot_cnt))
+      #sys.stdout.write("%6d out of %6d" % (cnt,tot_cnt))
+      sys.stdout.write(progress_sts)
       sys.stdout.write("\b" * len(progress_sts)) # return to start of line, after '['
       sys.stdout.flush()
        
@@ -249,19 +250,23 @@ class Data(object):
        
       if os.path.exists(imgpath):
         myimg1 = myimg.myImg( imageid=rec.image, config=self.myImg_config, path=imgpath) 
+       
+        #check if image needs to be converted to greyscale.  
+        if convert_to_greyscale: 
+          myimg1.getGreyScaleImage2(convertFlag=True) 
          
-        myimg1.getGreyScaleImage2(convertFlag=True) 
+        #curtail image to specific frame size. 
         myimg1.padImage(n_img_w,n_img_h)
          
         #x_img_buf[ 0, :, :] = myimg1.getImage()
-         
+        #Save the transformed image. 
         myimg1.saveImage(img_type_ext='.jpeg',gen_new_filename=True)
          
         #self.log( mname, "Croped Image [{}] [{}] [{}] [{}]".format(myimg1.getImage().shape,croped_img_arr.shape,x_train.shape,x_img_buf.shape), level=4)
          
         #x_train = np.vstack( (x_train, x_img_buf))
         #x_train[cnt,:,:,:] = croped_img_arr
-        y_buf.append(rec.level)
+        #y_buf.append(rec.level)
          
         self.df.loc[i,'imgexists'] = True
         self.df.loc[i,'w'], self.df.loc[i,'h'] = myimg1.getImageDim()
@@ -272,12 +277,14 @@ class Data(object):
         file_missing += 1
        
       cnt += 1
-      
+     
+    ''' 
     #create y array as required
     y_train = np.array( y_buf, dtype='uint8')
     y_train = np.reshape( y_train, (y_train.size,1))
     #print final dimensionf or x_train and y_train
     self.log( mname, "x_train [{}] y_train [{}]".format(x_train.shape,y_train.shape), level=3)
+    ''' 
       
     self.log( mname, "Process dataset [{}]".format(cnt), level=3)
     self.log( mname, "File missing [{}]".format(file_missing), level=3)
@@ -426,23 +433,37 @@ class Data(object):
     ''' 
      
     #generate dataset for handling train : test
-    np.random.seed(self.random_seed)
-    self.train_df = self.df.sample( frac=.7, replace=False, random_state=self.random_seed)
-    self.test_df = self.df[~self.df.index.isin(self.train_df.index)]
+    train_df = pd.DataFrame(columns=self.df.columns)
+    test_df = pd.DataFrame(columns=self.df.columns)
+    label_cat = self.df.level.unique()
+    for label in label_cat:
+      np.random.seed(self.random_seed)
+      temp_df = self.df[self.df.level == label]
+      #self.log( mname, "Level [%d] [%d] recs" % (label,temp_df['level'].count()), level=3)
+      frac = 0.8
+      if label == 0:
+        frac=0.6
+      train_df = train_df.append( temp_df.sample( frac=frac, replace=False, random_state=self.random_seed))
+      test_df = test_df.append( temp_df[~temp_df.index.isin(train_df.index)])
+     
+    self.log( mname, "Level [%d] train_df[%d] recs" % (label,train_df['level'].count()), level=3)
+    self.log( mname, "Level [%d] test_df[%d] recs" % (label,test_df['level'].count()), level=3)
     
     self.tot_cnt = self.img_processing_capacity 
     if self.tot_cnt == 0:
-      self.tot_cnt = self.train_df['level'].count()
+      self.tot_cnt = train_df['level'].count()
     cnt = 0
     file_missing = 0
      
     #self.train_df = self.train_df.reset_index()
     #self.test_df = self.test_df.reset_index()
+    self.train_df = train_df
+    self.test_df = test_df
     print(self.train_df.head())
      
     self.train_df.to_csv( self.train_data_dir + "train_df.csv", index=False, header=False)
     self.test_df.to_csv( self.train_data_dir + "test_df.csv", index=False, header=False)
-    
+     
     self.no_classes = self.train_df.level.nunique()
      
     return (self.train_df.level.count(), self.test_df.level.count()) 
@@ -754,36 +775,8 @@ class Data(object):
 if __name__ == "__main__":
   #prep_data()
   data = Data()
-  #a1 = tf.Variable( 0, dtype='uint8')
-  #data.load_data_as_greyscale( from_index=27500, batch_size=2500)
-   
+  #from_index, batch_size = cmd_util.get_preprocessing_index(sys.argv[1:])
+  #print(from_index,batch_size)
+  #data.preprocess_images( convert_to_greyscale=False, from_index=from_index, batch_size=batch_size)
   #data.load_img_data()
   data.initialize_for_batch_load()
-  '''
-  with tf.Graph().as_default(), tf.device('/cpu:0'):
-  #with tf.Session() as sess:
-      #iterator = data.get_iterator()
-      #for X, Y in data.get_iterator():
-      _dataset,_iterator = data.get_iterator()
-      #training_init_op = _iterator.make_initializer(_dataset)
-      #sess.run(training_init_op)
-      #_iterator.initializer()
-      X, Y = _iterator.get_next()
-      #X, Y, ID = _iterator.get_next()
-      print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-      for i in range(3):
-        #X, Y = _iterator.get_next()
-        x, y = X, Y
-        #x, y, _id = X, Y, ID
-        #print("***",np.shape(x.eval()),np.shape(y.eval()),"****",y.eval())
-        print("***",np.shape(x),x.get_shape().as_list()[1],np.shape(y),"****",y)
-        #print("***",np.shape(x.eval()),np.shape(y.eval()),"****",_id.eval(),y.eval())
-        #a1 += i
-   
-      #init_op = tf.global_variables_initializer()
-      
-      with tf.Session() as sess:
-        sess.run(x,init_op)   
-        #sess.run(training_init_op)   
-        print("a1=%d" % (sess.run(a1)))
-  '''

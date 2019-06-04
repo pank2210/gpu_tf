@@ -511,10 +511,10 @@ def main(argv=None):
 
 if __name__ == "__main__":
    #main(sys.argv[1:])
-   #i_imgpath = '/data1/data/img/15916_right.jpeg'
-   i_imgpath = '/data1/data/croped/15916_right.jpeg'
+   i_imgpath = '/data1/data/img/15916_right.jpeg'
+   #i_imgpath = '/data1/data/croped/15916_right.jpeg'
    #i_imgpath = '/tmp/15916_right.jpeg'
-   #i_imgpath = '/tmp/img/15916_right.jpeg'
+   i_imgpath = '/data1/data/croped_color/108_right.jpeg'
    i_cdir = '/tmp/'
    print("Input image file is [{}]".format(i_imgpath))
    print("Input working directory is [{}]".format(i_cdir))
@@ -525,7 +525,10 @@ if __name__ == "__main__":
    img1.printImageProp()
    
    ''' 
-   img1.getGreyScaleImage2(convertFlag=True) 
+   #img1.getGreyScaleImage2(convertFlag=True) 
    img1.padImage(2000,2000)
    img1.saveImage(img_type_ext='.jpeg',gen_new_filename=True)
+   i_imgpath = '/tmp/img/15916_right.jpeg'
+   img2 = myImg(imageid="xx",config=config,ekey='x123',path=i_imgpath)
+   img2.printImageProp()
    ''' 
