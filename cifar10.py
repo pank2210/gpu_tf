@@ -337,12 +337,13 @@ def resnet(inpt, n):
     print("**inpt**",inpt.get_shape())
     #'''
     with tf.variable_scope('conv0') as scope:
-        conv1 = conv_layer( scope.name, layers[-1], [5, 5, 1, 16], 1)
-        layers.append(conv1)
+      conv1 = conv_layer( scope.name, layers[-1], [7, 7, inpt.get_shape()[-1], 16], stride=2)
+      layers.append(conv1)
 
     with tf.variable_scope('pool0') as scope:
-      filter_ = [1,2,2,1]
-      pool0 = tf.nn.max_pool(layers[-1], ksize=filter_, strides=filter_, padding='SAME')
+      filter_ = [1,3,3,1]
+      stride_ = [1,2,2,1]
+      pool0 = tf.nn.max_pool(layers[-1], ksize=filter_, strides=stride_, padding='SAME')
       pool0 = tf.layers.batch_normalization(pool0)
       layers.append(pool0)
       print("*****",scope.name,"**pool0**",pool0.get_shape())

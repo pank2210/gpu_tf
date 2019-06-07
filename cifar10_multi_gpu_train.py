@@ -210,7 +210,7 @@ def train():
     
     #training dataset
     data.set_data_file('train')
-    _dataset,_iterator = data.get_iterator()
+    _dataset, _iterator = data.get_iterator()
     training_init_op = _iterator.make_initializer(_dataset)
     
     #test dataset
@@ -465,8 +465,8 @@ def print_groups(i_file,g_count_key='prob',g_keys=['label','pred'],g_sort_keys=[
 def main(argv=None):  # pylint: disable=unused-argument
   mode = 'train'
   #cifar10.maybe_download_and_extract()
-  if len(argv) > 0:
-    print("Running mode - [%s]" % argv[1])
+  #if len(argv) > 0:
+  #  print("Running mode - [%s]" % argv[1])
   #print_groups(i_file='/tmp/cifar10_train/test_out_df.csv')
   #'''
   if mode == 'train':
@@ -474,11 +474,12 @@ def main(argv=None):  # pylint: disable=unused-argument
       tf.gfile.DeleteRecursively(FLAGS.train_dir)
     tf.gfile.MakeDirs(FLAGS.train_dir)
     train()
+    test(test_examples=200)
   else:
     if tf.gfile.Exists(FLAGS.eval_dir):
       tf.gfile.DeleteRecursively(FLAGS.eval_dir)
     tf.gfile.MakeDirs(FLAGS.eval_dir)
-    test(test_examples=150)
+    test(test_examples=200)
   #'''
 
 if __name__ == '__main__':

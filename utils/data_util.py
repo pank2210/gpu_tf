@@ -753,7 +753,7 @@ class Data(object):
       _id = tf.cast(m[0][0],tf.int64)
       ''' 
        
-      yield (image_id,x_buf, y_buf)
+      yield ( image_id, x_buf, y_buf)
       #yield (x_buf, y_buf, _id)
    
   def get_iterator(self):

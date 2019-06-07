@@ -5,7 +5,7 @@
         "data_dir_path": "/data1/data/"
      },
   "img": {
-        "channels": 1,
+        "channels": 3,
         "img_processing_capacity": 0,
         "img_width": 2000,
         "img_heigth": 2000,
@@ -24,7 +24,7 @@
                "random_seed": 1001,
                "training_dataset_ratio": 0.8,
                "validation_dataset_ratio": 0.05,
-               "batch_size": 32,
+               "batch_size": 8,
                "lr_rate": 0.001
            }
      }
