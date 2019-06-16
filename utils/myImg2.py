@@ -6,6 +6,7 @@ from scipy import misc
 import math
 import re
 import os.path
+import matplotlib.pyplot as plt
 
 #from matplotlib import pyplot as plt
 from skimage import util
@@ -107,18 +108,40 @@ class myImg(object):
          #misc.imsave('o.png',self.img)
          misc.destroyAllWindows()
 
-   def printPixel(self,x,y):
+   def printPixel(self,x0,y0,w=5,h=.10):
       mname = 'printPixel' 
+      #w = h = 10
      
-      if x<0:
-        x=0 
-      if y<0:
-        y=0 
+      if x0 < 0:
+        x0 = 0 
+      if y0 < 0:
+        y0 = 0 
 
-      px = self.img[x,y]
+      px = self.img[x0:(x0+w),y0:(y0+h),:]
       #print('px - ' + px)
-      print(px)
-      print(self.img.item(x,y))
+      print(px.shape)
+      np.savetxt('/tmp/px0.csv', px[:,:,0], fmt='%03d')
+      np.savetxt('/tmp/px1.csv', px[:,:,1], fmt='%03d')
+      np.savetxt('/tmp/px2.csv', px[:,:,2], fmt='%03d')
+      px = px.astype('float32')
+      #print(px)
+      #px /= 255.0
+      #print(px)
+      '''
+      for i in range(3):
+        #print(i,px[:,:,i].shape,np.mean(px[:,:,i]),px[:,:,i])
+        print(i,px[:,:,i].shape,np.mean(px[:,:,i]))
+        px[:,:,i] -= np.mean(px[:,:,i])
+        px[:,:,i] /= np.std(px[:,:,i])
+      '''
+      px -= np.mean(px)
+      px /= np.std(px)
+      np.savetxt('/tmp/pxm0.csv', px[:,:,0], fmt='%0.3f')
+      np.savetxt('/tmp/pxm1.csv', px[:,:,1], fmt='%0.3f')
+      np.savetxt('/tmp/pxm2.csv', px[:,:,2], fmt='%0.3f')
+      px = np.around( px, decimals=3)
+      #print(px)
+      #print(self.img.item((x,y,1)))
 
    def addRandNoise(self):
       mname = 'addRandNoise'
@@ -222,7 +245,7 @@ class myImg(object):
       imagekeys = self.imgdict.keys()
       #Create subplot to accomodate all images and historgram
       #uncomment to see plt graphs
-      #fig, axes = plt.subplots(nrows=len(imagekeys)+1,ncols=2) #init subplot 
+      fig, axes = plt.subplots(nrows=len(imagekeys)+1,ncols=2) #init subplot 
       ax = axes.ravel()
        
       #put source or original image to display
@@ -514,7 +537,7 @@ if __name__ == "__main__":
    i_imgpath = '/data1/data/img/15916_right.jpeg'
    #i_imgpath = '/data1/data/croped/15916_right.jpeg'
    #i_imgpath = '/tmp/15916_right.jpeg'
-   i_imgpath = '/data1/data/croped_color/108_right.jpeg'
+   i_imgpath = '/data1/data/croped_color/36181_left.jpeg'
    i_cdir = '/tmp/'
    print("Input image file is [{}]".format(i_imgpath))
    print("Input working directory is [{}]".format(i_cdir))
@@ -523,6 +546,8 @@ if __name__ == "__main__":
    img1 = myImg(imageid="xx",config=config,ekey='x123',path=i_imgpath)
    #img1.saveImage()
    img1.printImageProp()
+   #img1.showImageAndHistogram()
+   img1.printPixel(x0=1772,y0=1154,w=20,h=20)
    
    ''' 
    #img1.getGreyScaleImage2(convertFlag=True) 

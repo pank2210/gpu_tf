@@ -42,6 +42,7 @@ import tarfile
 
 from six.moves import urllib
 import tensorflow as tf
+import keras.layers as KL
 
 import cifar10_input
 
@@ -66,9 +67,10 @@ tf.app.flags.DEFINE_integer('no_classes', NUM_CLASSES,
 
 # Constants describing the training process.
 MOVING_AVERAGE_DECAY = 0.9999     # The decay to use for the moving average.
-NUM_EPOCHS_PER_DECAY = 3.0      # Epochs after which learning rate decays.
-LEARNING_RATE_DECAY_FACTOR = 0.99  # Learning rate decay factor.
-INITIAL_LEARNING_RATE = 0.0065   # Initial learning rate.
+NUM_EPOCHS_PER_DECAY = 100.0      # Epochs after which learning rate decays.
+LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
+#INITIAL_LEARNING_RATE = 0.0065   # Initial learning rate.
+INITIAL_LEARNING_RATE = 0.1   # Initial learning rate.
 
 # If a model is trained with multiple GPUs, prefix all Op names with tower_name
 # to differentiate the operations. Note that this prefix is removed from the
@@ -76,6 +78,23 @@ INITIAL_LEARNING_RATE = 0.0065   # Initial learning rate.
 TOWER_NAME = 'tower'
 
 DATA_URL = 'https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz'
+
+
+class BatchNorm(KL.BatchNormalization):
+    """Extends the Keras BatchNormalization class to allow a central place
+    to make changes if needed.
+    Batch normalization has a negative effect on training if batches are small
+    so this layer is often frozen (via setting in Config class) and functions
+    as linear layer.
+    """
+    def call(self, inputs, training=None):
+        """
+        Note about training values:
+            None: Train BN layers. This is the normal mode
+            False: Freeze BN layers. Good when batch size is small
+            True: (don't use). Set layer in training mode even when making inferences
+        """
+        return super(self.__class__, self).call(inputs, training=training)
 
 def _activation_summary(x):
   """Helper to create summaries for activations.
@@ -200,7 +219,7 @@ def softmax_layer(inpt, shape):
 
 def conv_layer( _scope, inpt, filter_shape, stride, stddev=5e-2, wd=0.04):
   with tf.variable_scope(_scope) as scope:
-    print("*****",_scope,"**conv layer**",inpt.get_shape(),"***",filter_shape,"***",stddev)
+    print("*****",_scope,"**conv layer**",inpt.get_shape(),"**filter**",filter_shape,"**stride**",stride)
     out_channels = filter_shape[3]
     '''
     filter_ = weight_variable(filter_shape)
@@ -215,115 +234,51 @@ def conv_layer( _scope, inpt, filter_shape, stride, stddev=5e-2, wd=0.04):
                                          wd=wd)
     conv = tf.nn.conv2d(inpt, kernel, [1, stride, stride, 1], padding='SAME')
     biases = _variable_on_cpu('biases', [out_channels], tf.constant_initializer(0.1))
-    pre_activation = tf.nn.bias_add(conv, biases)
-    #conv = tf.nn.relu(pre_activation, name=scope.name)
-    conv = tf.nn.relu(pre_activation, name=_scope)
+    conv = tf.nn.bias_add(conv, biases)
+    #conv = BatchNorm(name=scope.name)(conv, training=False)
     conv = tf.layers.batch_normalization(conv)
+    conv = tf.nn.relu( conv, name=_scope)
      
     _activation_summary(conv)
      
     return conv
 
-def residual_block( _scope, inpt, output_depth, down_sample, projection=False,stddev=1e-2,wd=None):
+def residual_block( _scope, inpt, output_depth, down_sample=False, kernel=3, stride=2, projection=True, stddev=1e-2, wd=None):
   with tf.variable_scope(_scope) as scope:
     input_depth = inpt.get_shape().as_list()[3]
+    filter_1, filter_2, filter_3 = output_depth
     if down_sample:
-        filter_ = [1,2,2,1]
-        inpt = tf.nn.max_pool(inpt, ksize=filter_, strides=filter_, padding='SAME')
+        filter_ = [1,kernel,kernel,1]
+        stride_ = [1,stride,stride,1]
+        inpt = tf.nn.max_pool(inpt, ksize=filter_, strides=stride_, padding='SAME')
 
-    print("***",_scope,"**resnet block**",inpt.get_shape(),"***",stddev)
-    conv1 = conv_layer( "%s-%s" % (_scope,'1'),inpt, [3, 3, input_depth, output_depth], 1, stddev, wd)
-    conv2 = conv_layer( "%s-%s" % (_scope,'2'),conv1, [3, 3, output_depth, output_depth], 1, stddev, wd)
-
+    print("***",_scope,"**resnet block**",inpt.get_shape(),"**channels**",output_depth,"***stride*",stride)
+    #conv = conv_layer( "%s-%s" % (_scope,'1'),inpt, [ 1, 1, input_depth, filter_1], stride=2, stddev, wd)
+    conv = conv_layer( "%s-%s" % (_scope,'1'),inpt, [ 1, 1, input_depth, filter_1], stride=stride)
+    conv = conv_layer( "%s-%s" % (_scope,'2'),conv, [ kernel, kernel, filter_1, filter_2], stride=1)
+    conv = conv_layer( "%s-%s" % (_scope,'3'),conv, [ 1, 1, filter_2, filter_3], stride=1)
+     
     if input_depth != output_depth:
         if projection:
             # Option B: Projection shortcut
-            input_layer = conv_layer( "%s-%s" % (_scope,'3'),inpt, [1, 1, input_depth, output_depth], 2)
+            _scope_name = "%s-%s" % (_scope,'R')
+            input_layer = conv_layer( "%s-%s" % (_scope,'R'),inpt, [1, 1, input_depth, filter_3], stride=stride)
+            #input_layer = BatchNorm(name=_scope_name)(input_layer,training=False)
         else:
             # Option A: Zero-padding
-            input_layer = tf.pad(inpt, [[0,0], [0,0], [0,0], [0, output_depth - input_depth]])
+            input_layer = tf.pad(inpt, [[0,0], [0,0], [0,0], [0, filter_3 - input_depth]])
     else:
         input_layer = inpt
-
-    res = conv2 + input_layer
      
-    return res
-
-# ResNet architectures used for CIFAR-10
-def simple_net(inpt):
-    print("***********SimpleNet**********")
-    num_layers = 4
-    channels_increment_factor = 2
-    out_channels = 16
-    keep_prob = .7
+    print("***",_scope,"**Add resnet block**",conv.get_shape(),"***",input_layer.get_shape())
+    conv = conv + input_layer
+    conv = tf.nn.relu( conv, name=_scope)
      
-    with tf.variable_scope('conv0') as scope:
-        net = conv_layer( scope.name, inpt, [5, 5, 1, out_channels], 1)
-        print("**",scope.name,net.get_shape())
-
-    with tf.variable_scope('pool0') as scope:
-        filter_ = [1,3,3,1]
-        stride_ = [1,2,2,1]
-        net = tf.nn.max_pool(net, ksize=filter_, strides=stride_, padding='SAME')
-        net = tf.layers.batch_normalization(net)
-        print("**",scope.name,net.get_shape())
-
-    for i in range(num_layers): 
-      layer_str = str(i+1)
-      in_channels = out_channels
-      out_channels *= channels_increment_factor
-      with tf.variable_scope('conv' + layer_str) as scope:
-        net = conv_layer( scope.name, net, [3, 3, in_channels, out_channels], 1)
-        print("**",scope.name,net.get_shape())
-
-      with tf.variable_scope('pool' + layer_str) as scope:
-        filter_ = [1,2,2,1]
-        stride_ = [1,2,2,1]
-        net = tf.nn.max_pool(net, ksize=filter_, strides=stride_, padding='SAME')
-        net = tf.layers.batch_normalization(net)
-        print("**",scope.name,net.get_shape())
-
-    fc_1_units = 64
-    with tf.variable_scope('fc_1') as scope:
-        net = tf.layers.flatten( net, name=scope.name)
-        print("***",scope.name,net.get_shape())
-        net = tf.layers.dense( net, fc_1_units, name=scope.name)
-        net = tf.nn.dropout( net, keep_prob)
-        net = tf.layers.batch_normalization(net)
-        print("*****",scope.name,net.get_shape())
-     
-    fc_2_units = 128
-    with tf.variable_scope('fc_2') as scope:
-        net = tf.layers.dense( net, fc_2_units, name=scope.name)
-        net = tf.nn.dropout( net, keep_prob)
-        net = tf.layers.batch_normalization(net)
-        print("*****",scope.name,net.get_shape())
-    
-    fc_3_units = 256
-    with tf.variable_scope('fc_3') as scope:
-        net = tf.layers.dense( net, fc_3_units, name=scope.name)
-        net = tf.nn.dropout( net, keep_prob)
-        net = tf.layers.batch_normalization(net)
-        print("*****",scope.name,net.get_shape())
-    
-    fc_4_units = 512
-    with tf.variable_scope('fc_4') as scope:
-        net = tf.layers.dense( net, fc_4_units, name=scope.name)
-        net = tf.nn.dropout( net, keep_prob)
-        net = tf.layers.batch_normalization(net)
-        print("*****",scope.name,net.get_shape())
-    
-    with tf.variable_scope('fc_5') as scope:
-        net = tf.layers.dense( net, NUM_CLASSES, name=scope.name)
-        print("*****",scope.name,net.get_shape())
-    
-    return net
-
-
+    return conv
 
 n_dict = {20:1, 32:2, 44:3, 56:4}
 # ResNet architectures used for CIFAR-10
-def resnet(inpt, n):
+def resnet(inpt, n, is_training=True):
     if n < 20 or (n - 20) % 12 != 0:
         print("ResNet depth invalid.")
         return
@@ -332,74 +287,44 @@ def resnet(inpt, n):
     layers = []
    
     enable_pooling = True
-    out_channels = 16
+    out_channels = 64
+    channels_increase_factor = 2
     layers.append(inpt) 
-    print("**inpt**",inpt.get_shape())
+    print("**inpt**",inpt.get_shape(),"***num_conv***",num_conv)
     #'''
     with tf.variable_scope('conv0') as scope:
-      conv1 = conv_layer( scope.name, layers[-1], [7, 7, inpt.get_shape()[-1], 16], stride=2)
+      conv1 = conv_layer( scope.name, layers[-1], [7, 7, inpt.get_shape()[-1], out_channels], stride=2)
+      #conv1 = BatchNorm(name=scope.name)(conv1, training=False)
+      #conv1 = tf.layers.batch_normalization(conv1)
+      #conv1 = tf.nn.relu( conv1, name=scope.name)
       layers.append(conv1)
 
     with tf.variable_scope('pool0') as scope:
-      filter_ = [1,3,3,1]
+      filter_ = [1,5,5,1]
       stride_ = [1,2,2,1]
       pool0 = tf.nn.max_pool(layers[-1], ksize=filter_, strides=stride_, padding='SAME')
-      pool0 = tf.layers.batch_normalization(pool0)
+      #pool0 = tf.layers.BatchNormalization(pool0)
       layers.append(pool0)
       print("*****",scope.name,"**pool0**",pool0.get_shape())
     #'''
     
-    for i in range (num_conv):
-        with tf.variable_scope('res_%d' % (i+1)) as scope:
-            conv2_x = residual_block(scope.name + '-1',layers[-1], out_channels, False)
-            conv2 = residual_block(scope.name + '-2',conv2_x, out_channels, False)
+    in_channels = out_channels 
+    out_channels = in_channels 
+    for i in range (2):
+      for j in range (num_conv):
+        with tf.variable_scope('res%d_%d' % (i+1,j+1)) as scope:
+            out_channels = in_channels * channels_increase_factor
+            conv2_x = residual_block( scope.name + 'a', layers[-1], [in_channels,in_channels,out_channels], kernel=3, stride=2, projection=True)
+            #in_channels = out_channels 
+            #out_channels = in_channels * 4
+            conv2 = residual_block( scope.name + 'b', conv2_x, [in_channels,in_channels,out_channels], kernel=3, stride=1, projection=False)
+            #conv2 = residual_block(scope.name + '-2',conv2_x, out_channels, False)
             layers.append(conv2_x)
             layers.append(conv2)
+            in_channels = out_channels 
 
         #assert conv2.get_shape().as_list()[1:] == [32, 32, 16]
-    if enable_pooling: 
-      with tf.variable_scope('pool1') as scope:
-        filter_ = [1,2,2,1]
-        pool1 = tf.nn.max_pool(layers[-1], ksize=filter_, strides=filter_, padding='SAME')
-        pool1 = tf.layers.batch_normalization(pool1)
-        layers.append(pool1)
-        print("*****",scope.name,pool1.get_shape())
-    
-    out_channels *= 2
-    for i in range (num_conv):
-        down_sample = True if i == 0 else False
-        with tf.variable_scope('conv3_%d' % (i+1)) as scope:
-            conv3_x = residual_block(scope.name + '-1',layers[-1], out_channels, down_sample,stddev=5e-2,wd=.04)
-            conv3 = residual_block(scope.name + '-2',conv3_x, out_channels, False,stddev=5e-2,wd=0.04)
-            layers.append(conv3_x)
-            layers.append(conv3)
-
-    #assert conv3.get_shape().as_list()[1:] == [16, 16, 32]
-    if enable_pooling:
-      with tf.variable_scope('pool2') as scope:
-        filter_ = [1,2,2,1]
-        pool2 = tf.nn.max_pool(layers[-1], ksize=filter_, strides=filter_, padding='SAME')
-        pool2 = tf.layers.batch_normalization(pool2)
-        layers.append(pool2)
-        print("*****",scope.name,pool2.get_shape())
-   
-    out_channels *= 2
-    for i in range (num_conv):
-        down_sample = True if i == 0 else False
-        with tf.variable_scope('conv4_%d' % (i+1)) as scope:
-            conv4_x = residual_block(scope.name + '-1' ,layers[-1], out_channels, down_sample)
-            conv4 = residual_block(scope.name + '-2',conv4_x, out_channels, False)
-            layers.append(conv4_x)
-            layers.append(conv4)
      
-    #assert conv3.get_shape().as_list()[1:] == [16, 16, 32]
-    if enable_pooling:
-      with tf.variable_scope('pool3') as scope:
-        filter_ = [1,2,2,1]
-        pool3 = tf.nn.max_pool(layers[-1], ksize=filter_, strides=filter_, padding='SAME')
-        pool3 = tf.layers.batch_normalization(pool3)
-        layers.append(pool3)
-        print("*****",scope.name,pool3.get_shape())
    
     #assert conv4.get_shape().as_list()[1:] == [8, 8, 64]
     with tf.variable_scope('flatten') as scope:
@@ -410,19 +335,24 @@ def resnet(inpt, n):
     #assert conv4.get_shape().as_list()[1:] == [8, 8, 64]
     fc_layers = 2
     fc_units_increment_factor = 2
-    out_fc_units = out_channels
+    out_fc_units = 1024
     for i in range(fc_layers):
       in_fc_units = out_fc_units
-      out_fc_units *=  2
+      out_fc_units *=  1
       with tf.variable_scope('fc_' + str(i+1)) as scope:
+        #out = KL.Dense( units=out_fc_units, activation='relu', name=scope.name)( inputs=layers[-1])
         out = tf.layers.dense( inputs=layers[-1], units=out_fc_units, activation='relu', name=scope.name)
-        out = tf.layers.batch_normalization(out)
+        out = tf.layers.dropout( inputs=out, rate=0.2, seed=101, training=is_training)
+        #out = KL.Dense( inputs=layers[-1], units=out_fc_units, activation='relu', name=scope.name)
+        #out = BatchNorm(name=scope.name)(out, training=False)
         layers.append(out)
         print("*****",scope.name,out.get_shape())
      
     #assert conv4.get_shape().as_list()[1:] == [8, 8, 64]
     with tf.variable_scope('final') as scope:
-        out = tf.layers.dense( out, NUM_CLASSES, activation='softmax', name=scope.name)
+        #out = KL.Dense( out, NUM_CLASSES, activation='softmax', name=scope.name)
+        #out = KL.Dense( NUM_CLASSES, activation='softmax', name=scope.name)(layers[-1])
+        out = tf.layers.dense( layers[-1], NUM_CLASSES, activation='softmax', name=scope.name)
         layers.append(out)
         print("*****",scope.name,out.get_shape())
      
@@ -562,106 +492,6 @@ def inference1(images):
   return softmax_linear
 
 
-def inference(images):
-  """Build the CIFAR-10 model.
-
-  Args:
-    images: Images returned from distorted_inputs() or inputs().
-
-  Returns:
-    Logits.
-  """
-  # We instantiate all variables using tf.get_variable() instead of
-  # tf.Variable() in order to share variables across multiple GPU training runs.
-  # If we only ran this model on a single GPU, we could simplify this function
-  # by replacing all instances of tf.get_variable() with tf.Variable().
-  #
-  # conv1
-  print("images","**************",images.get_shape())
-  with tf.variable_scope('conv1') as scope:
-    kernel = _variable_with_weight_decay('weights',
-                                         shape=[3, 3, 1, 16],
-                                         stddev=5e-2,
-                                         wd=None)
-    conv = tf.nn.conv2d(images, kernel, [1, 1, 1, 1], padding='SAME')
-    biases = _variable_on_cpu('biases', [16], tf.constant_initializer(0.0))
-    pre_activation = tf.nn.bias_add(conv, biases)
-    conv1 = tf.nn.relu(pre_activation, name=scope.name)
-    _activation_summary(conv1)
-
-  print("conv1","**************",conv1.get_shape())
-  # pool1
-  pool1 = tf.nn.max_pool(conv1, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1],
-                         padding='SAME', name='pool1')
-  print("pool1","**************",pool1.get_shape())
-  # norm1
-  norm1 = tf.nn.lrn(pool1, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75,
-                    name='norm1')
-
-  # conv2
-  with tf.variable_scope('conv2') as scope:
-    kernel = _variable_with_weight_decay('weights',
-                                         shape=[3, 3, 16, 16],
-                                         stddev=5e-2,
-                                         wd=None)
-    conv = tf.nn.conv2d(norm1, kernel, [1, 1, 1, 1], padding='SAME')
-    biases = _variable_on_cpu('biases', [16], tf.constant_initializer(0.1))
-    pre_activation = tf.nn.bias_add(conv, biases)
-    conv2 = tf.nn.relu(pre_activation, name=scope.name)
-    _activation_summary(conv2)
-  print("conv2","**************",conv2.get_shape())
-   
-  # norm2
-  norm2 = tf.nn.lrn(conv2, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75,
-                    name='norm2')
-  # pool2
-  pool2 = tf.nn.max_pool(norm2, ksize=[1, 3, 3, 1],
-                         strides=[1, 2, 2, 1], padding='SAME', name='pool2')
-  print("pool2","**************",pool2.get_shape())
-   
-  # local3
-  with tf.variable_scope('local3') as scope:
-    # Move everything into depth so we can perform a single matrix multiply.
-    '''
-    reshape = tf.reshape(pool2, [images.get_shape().as_list()[0], -1])
-    reshape = tf.reshape(pool2, [FLAGS.batch_size,-1])
-    print("local3.reshape","**************",reshape.get_shape())
-    '''
-    f_reshape = tf.contrib.layers.flatten(pool2)
-    print("local3.fflatened","**************",f_reshape.get_shape())
-    dim = f_reshape.get_shape()[1].value
-    weights = _variable_with_weight_decay('weights', shape=[dim, 2048],
-                                          stddev=0.04, wd=0.004)
-    biases = _variable_on_cpu('biases', [2048], tf.constant_initializer(0.1))
-    local3 = tf.nn.relu(tf.matmul(f_reshape, weights) + biases, name=scope.name)
-    print("local3","**************",local3.get_shape())
-    _activation_summary(local3)
-
-  # local4
-  with tf.variable_scope('local4') as scope:
-    weights = _variable_with_weight_decay('weights', shape=[2048, 1024],
-                                          stddev=0.04, wd=0.004)
-    biases = _variable_on_cpu('biases', [1024], tf.constant_initializer(0.1))
-    local4 = tf.nn.relu(tf.matmul(local3, weights) + biases, name=scope.name)
-    print("local4","**************",local4.get_shape())
-    _activation_summary(local4)
-
-  # linear layer(WX + b),
-  # We don't apply softmax here because
-  # tf.nn.sparse_softmax_cross_entropy_with_logits accepts the unscaled logits
-  # and performs the softmax internally for efficiency.
-  with tf.variable_scope('softmax_linear') as scope:
-    weights = _variable_with_weight_decay('weights', [1024, NUM_CLASSES],
-                                          stddev=1/1024.0, wd=None)
-    biases = _variable_on_cpu('biases', [NUM_CLASSES],
-                              tf.constant_initializer(0.0))
-    softmax_linear = tf.add(tf.matmul(local4, weights), biases, name=scope.name)
-    print("softmax","**************",softmax_linear.get_shape())
-    _activation_summary(softmax_linear)
-
-  return softmax_linear
-
-
 def loss(logits, labels, loss_type='losses'):
   """Add L2Loss to all the trainable variables.
 
@@ -695,10 +525,12 @@ def loss(logits, labels, loss_type='losses'):
     preds = tf.argmax( logits, 1)
     probs = tf.reduce_max( logits, 1)
     tf.add_to_collection( 'test_accuracy', test_accu)
-    #tf.add_to_collection( 'test_preds', preds)
-    #tf.add_to_collection( 'test_probs', probs)
+    tf.add_to_collection( 'test_preds', preds)
+    tf.add_to_collection( 'test_probs', probs)
+     
     return preds, probs
   else:
+     
     return tf.add_n(tf.get_collection(loss_type), name='total_' + loss_type)
 
 def _add_loss_summaries(total_loss, loss_type='losses'):

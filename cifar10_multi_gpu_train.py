@@ -55,7 +55,7 @@ import utils.data_util as du
 
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_string('train_dir', '/tmp/cifar10_train',
+tf.app.flags.DEFINE_string('train_dir', '/data1/data/models',
                            """Directory where to write event logs """
                            """and checkpoint.""")
 tf.app.flags.DEFINE_integer('max_steps', 500,
@@ -68,7 +68,7 @@ tf.app.flags.DEFINE_string('eval_dir', '/tmp/cifar10_eval',
                            """Directory where to write event logs.""")
 tf.app.flags.DEFINE_string('eval_data', 'test',
                            """Either 'test' or 'train_eval'.""")
-tf.app.flags.DEFINE_string('checkpoint_dir', '/tmp/cifar10_train',
+tf.app.flags.DEFINE_string('checkpoint_dir', '/data1/data/models',
                            """Directory where to read model checkpoints.""")
 
 
@@ -85,9 +85,11 @@ def tower_loss(scope, images, labels, loss_type='losses'):
   """
 
   # Build inference Graph.
-  #logits = cifar10.inference1(images)
-  logits = cifar10.resnet(inpt=images,n=20)
-  #logits = cifar10.simple_net(inpt=images)
+  #set is_training flag for use in resnet for activating or deactivating dropout based on training
+  is_training = True 
+  if loss_type != 'losses':
+    is_training = False
+  logits = cifar10.resnet(inpt=images,n=44,is_training=is_training)
   #print("logits ############",logits.get_shape())
 
   # Build the portion of the Graph calculating the losses. Note that we will
@@ -141,17 +143,17 @@ def average_gradients(tower_grads):
   """
   average_grads = []
   i = 0
-  j = 0
   for grad_and_vars in zip(*tower_grads):
     # Note that each grad_and_vars looks like the following:
     #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
     grads = []
     #print(i,"grad_and_vars ############ len ",len(grad_and_vars))
+    j = 0
     for g, _ in grad_and_vars:
       # Add 0 dimension to the gradients to represent the tower.
-      #print("grad_and_vars ############ g ",g.get_shape())
+      #print(i,j,"grad_and_vars ############ g ",g.get_shape())
       expanded_g = tf.expand_dims(g, 0)
-      #print(j,"grad_and_vars ############ expanded_g ",expanded_g.get_shape())
+      #print(i,j,"grad_and_vars ############ expanded_g ",expanded_g.get_shape())
 
       # Append on a 'tower' dimension which we will average over below.
       grads.append(expanded_g)
@@ -171,12 +173,15 @@ def average_gradients(tower_grads):
     v = grad_and_vars[0][1]
     grad_and_var = (grad, v)
     average_grads.append(grad_and_var)
+   
   return average_grads
 
 
-def train():
+def train(model_name='mymodel.ckpt'):
   """Train CIFAR-10 for a number of steps."""
+  print("Starting Train for model_name[%s]" % (model_name))
   with tf.Graph().as_default(), tf.device('/cpu:0'):
+    tf.random.set_random_seed(1001)
     # Create a variable to count the number of train() calls. This equals the
     # number of batches processed * FLAGS.num_gpus.
     global_step = tf.get_variable(
@@ -214,7 +219,7 @@ def train():
     training_init_op = _iterator.make_initializer(_dataset)
     
     #test dataset
-    data.set_data_file('test')
+    data.set_data_file('val')
     _test_dataset, _test_iterator = data.get_iterator()
     test_init_op = _test_iterator.make_initializer(_test_dataset)
     
@@ -254,6 +259,8 @@ def train():
             '''
              
             # Keep track of the gradients across all towers.
+            if grads is None:
+              print("$$$$$$$$$$$$$$$$$$$$$$$$grads is None scope[%s]..." % (scope))
             tower_grads.append(grads)
             #print("tower_grads ############# len ",len(tower_grads))
 
@@ -320,6 +327,7 @@ def train():
 
       assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
 
+      #if step % 10 == 0:
       if step % 10 == 0:
         test_accu_value, test_loss_value = sess.run([test_accu, test_loss])
         num_examples_per_step = FLAGS.batch_size * FLAGS.num_gpus
@@ -338,17 +346,19 @@ def train():
 
       # Save the model checkpoint periodically.
       if step % 1000 == 0 or (step + 1) == FLAGS.max_steps:
-        checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
+        #checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
+        checkpoint_path = os.path.join(FLAGS.train_dir, model_name)
         saver.save(sess, checkpoint_path, global_step=step)
 
 
-def test(test_examples):
+def test(model_name,test_examples):
   """Train CIFAR-10 for a number of steps."""
   with tf.Graph().as_default(), tf.device('/cpu:0'):
+    tf.random.set_random_seed(2001)
     data = du.Data(jfilepath='config/config.json')
     data.set_batch_size( FLAGS.batch_size)
     data.set_no_classes( FLAGS.no_classes)
-    test_out_file = FLAGS.train_dir + '/test_out_df.csv'
+    test_out_file = FLAGS.train_dir + '/' + model_name + '_df.csv'
     
     #training dataset
     data.set_data_file('test')
@@ -387,11 +397,17 @@ def test(test_examples):
         allow_soft_placement=True,
         log_device_placement=FLAGS.log_device_placement))
      
-    variable_averages = tf.train.ExponentialMovingAverage(
-        cifar10.MOVING_AVERAGE_DECAY)
-    variables_to_restore = variable_averages.variables_to_restore()
+    #variable_averages = tf.train.ExponentialMovingAverage( cifar10.MOVING_AVERAGE_DECAY)
+    #variables_to_restore = variable_averages.variables_to_restore()
      
-    saver = tf.train.Saver(variables_to_restore)
+    #saver = tf.train.Saver(variables_to_restore)
+    saver = tf.train.Saver()
+     
+    saver.restore(sess, FLAGS.checkpoint_dir + '/' + model_name)
+    #global_step = ckpt.model_checkpoint_path.split('/')[-1].split('-')[-1]
+    #print("*****ckpt[%s] global_step[%s]" % (ckpt.model_checkpoint_path,global_step))
+     
+    ''' 
     ckpt = tf.train.get_checkpoint_state(FLAGS.checkpoint_dir)
     if ckpt and ckpt.model_checkpoint_path:
       # Restores from checkpoint
@@ -400,9 +416,11 @@ def test(test_examples):
       #   /my-favorite-path/cifar10_train/model.ckpt-0,
       # extract global_step from it.
       global_step = ckpt.model_checkpoint_path.split('/')[-1].split('-')[-1]
+      print("*****ckpt[%s] global_step[%s]" % (ckpt.model_checkpoint_path,global_step))
     else:
       print('No checkpoint file found')
       return
+    ''' 
     #sess.run(init)
     sess.run(local_var_init)
     #sess.run(training_init_op)
@@ -463,24 +481,30 @@ def print_groups(i_file,g_count_key='prob',g_keys=['label','pred'],g_sort_keys=[
   print(g_df)
 
 def main(argv=None):  # pylint: disable=unused-argument
-  mode = 'train'
+  mode = 'test'
+  model_name = 'res_d20_c16.cpkt'
+  model_name = 'res_d32_c32.cpkt'
+  #model_name = 'res_d44_c64_f7_p5_lr01_fc1024.cpkt-499'
+  model_name = 'res_d44_c64_f7_p5_lr01_fc1024.cpkt'
+  #model_name = 'res_d44_c64_f5_p3_lr01.cpkt-3499'
   #cifar10.maybe_download_and_extract()
-  #if len(argv) > 0:
-  #  print("Running mode - [%s]" % argv[1])
+  if len(argv) > 0:
+    print("arguments passed",argv[:])
+    print("Running mode - [%s]" % argv[1])
+    mode = argv[1]
   #print_groups(i_file='/tmp/cifar10_train/test_out_df.csv')
   #'''
   if mode == 'train':
-    if tf.gfile.Exists(FLAGS.train_dir):
-      tf.gfile.DeleteRecursively(FLAGS.train_dir)
-    tf.gfile.MakeDirs(FLAGS.train_dir)
-    train()
-    test(test_examples=200)
+    #if tf.gfile.Exists(FLAGS.train_dir):
+    #  tf.gfile.DeleteRecursively(FLAGS.train_dir)
+    #tf.gfile.MakeDirs(FLAGS.train_dir)
+    train(model_name)
+    #test(model_name,test_examples=100)
   else:
     if tf.gfile.Exists(FLAGS.eval_dir):
       tf.gfile.DeleteRecursively(FLAGS.eval_dir)
     tf.gfile.MakeDirs(FLAGS.eval_dir)
-    test(test_examples=200)
-  #'''
+    test(model_name,test_examples=70)
 
 if __name__ == '__main__':
   tf.app.run()

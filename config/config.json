@@ -7,10 +7,10 @@
   "img": {
         "channels": 3,
         "img_processing_capacity": 0,
-        "img_width": 2000,
-        "img_heigth": 2000,
-        "img_dir_path": "/data1/data/croped_color/",
-        "img_croped_dir_path": "/data1/data/croped_color/",
+        "img_width": 1000,
+        "img_heigth": 1000,
+        "img_dir_path": "/data1/data/croped_1k/",
+        "img_croped_dir_path": "/data1/data/croped_1k/",
         "img_filename_ext": ".jpeg"
      },
   "train": {

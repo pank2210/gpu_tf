@@ -434,20 +434,26 @@ class Data(object):
      
     #generate dataset for handling train : test
     train_df = pd.DataFrame(columns=self.df.columns)
+    val_df = pd.DataFrame(columns=self.df.columns)
     test_df = pd.DataFrame(columns=self.df.columns)
     label_cat = self.df.level.unique()
     for label in label_cat:
       np.random.seed(self.random_seed)
       temp_df = self.df[self.df.level == label]
       #self.log( mname, "Level [%d] [%d] recs" % (label,temp_df['level'].count()), level=3)
-      frac = 0.8
+      train_frac = 0.97
+      val_frac = 0.80
       if label == 0:
-        frac=0.6
-      train_df = train_df.append( temp_df.sample( frac=frac, replace=False, random_state=self.random_seed))
+        train_frac=0.35
+        val_frac = 0.02
+      train_df = train_df.append( temp_df.sample( frac=train_frac, replace=False, random_state=self.random_seed))
+      temp_df =  temp_df[~temp_df.index.isin(train_df.index)]
+      val_df = val_df.append( temp_df.sample( frac=val_frac, replace=False, random_state=self.random_seed))
       test_df = test_df.append( temp_df[~temp_df.index.isin(train_df.index)])
      
     self.log( mname, "Level [%d] train_df[%d] recs" % (label,train_df['level'].count()), level=3)
     self.log( mname, "Level [%d] test_df[%d] recs" % (label,test_df['level'].count()), level=3)
+    self.log( mname, "Level [%d] val_df[%d] recs" % (label,val_df['level'].count()), level=3)
     
     self.tot_cnt = self.img_processing_capacity 
     if self.tot_cnt == 0:
@@ -459,14 +465,25 @@ class Data(object):
     #self.test_df = self.test_df.reset_index()
     self.train_df = train_df
     self.test_df = test_df
-    print(self.train_df.head())
+    self.val_df = val_df
+    #print(self.train_df.head())
+    
+    #reshuffle DF
+    self.train_df = self.train_df.reindex(np.random.permutation(self.train_df.index))
+    self.test_df = self.test_df.reindex(np.random.permutation(self.test_df.index))
+    self.val_df = self.val_df.reindex(np.random.permutation(self.val_df.index))
      
     self.train_df.to_csv( self.train_data_dir + "train_df.csv", index=False, header=False)
     self.test_df.to_csv( self.train_data_dir + "test_df.csv", index=False, header=False)
+    self.val_df.to_csv( self.train_data_dir + "val_df.csv", index=False, header=False)
+     
+    print_groups( self.train_df, g_count_key='level', g_keys=['level'], g_sort_keys=['level'])
+    print_groups( self.test_df, g_count_key='level', g_keys=['level'], g_sort_keys=['level'])
+    print_groups( self.val_df, g_count_key='level', g_keys=['level'], g_sort_keys=['level'])
      
     self.no_classes = self.train_df.level.nunique()
      
-    return (self.train_df.level.count(), self.test_df.level.count()) 
+    return (self.train_df.level.count(), self.val_df.level.count(),  self.test_df.level.count()) 
   
   def get_batch_size(self):
     return self.batch_size
@@ -703,7 +720,7 @@ class Data(object):
       label = line[1] 
        
       imgpath = self.img_dir_path + image_id + self.img_filename_ext 
-
+       
       if os.path.exists(imgpath):
         myimg1 = myimg.myImg( imageid=image_id, config=self.myImg_config, path=imgpath) 
         #myimg1.getGreyScaleImage2(convertFlag=True)
@@ -736,8 +753,9 @@ class Data(object):
        
       #x_buf = x_buf.astype('float32') / 255
       x_buf = x_buf.astype('float32')
-      x_buf /= 255.0
+      #x_buf /= 255.0
       x_buf -= np.mean(x_buf)
+      x_buf /= np.std(x_buf)
       # Crop the central [height, width] of the image.
       #x_buf = tf.cast( x_buf, tf.float32)
       #x_buf = tf.image.resize_image_with_crop_or_pad(x_buf,n_img_h,n_img_w)
@@ -771,12 +789,29 @@ class Data(object):
     #_iterator = dataset.make_one_shot_iterator()
      
     return dataset,_iterator
+  
+def print_groups(df,g_count_key='prob',g_keys=['label','pred'],g_sort_keys=['label','pred']):
+  fname = 'print_groups'
+   
+  #df = pd.read_csv( i_file)
+  #df.intent = df.intent.fillna('NA')
+  g_df = df[ \
+      #(df.status_code != 200) & \
+      (df[g_count_key] >= 0) \
+          ] \
+      .groupby(g_keys) \
+      [g_count_key].count() \
+      .nlargest(1000) \
+      .reset_index(name='count') \
+      .sort_values( g_sort_keys, ascending=True)
+  print(g_df)
+
      
 if __name__ == "__main__":
   #prep_data()
   data = Data()
-  #from_index, batch_size = cmd_util.get_preprocessing_index(sys.argv[1:])
+  from_index, batch_size = cmd_util.get_preprocessing_index(sys.argv[1:])
   #print(from_index,batch_size)
-  #data.preprocess_images( convert_to_greyscale=False, from_index=from_index, batch_size=batch_size)
+  data.preprocess_images( convert_to_greyscale=False, from_index=from_index, batch_size=batch_size)
   #data.load_img_data()
-  data.initialize_for_batch_load()
+  #data.initialize_for_batch_load()
