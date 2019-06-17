@@ -40,6 +40,7 @@ import re
 import sys
 import tarfile
 
+import numpy as np
 from six.moves import urllib
 import tensorflow as tf
 import keras.layers as KL
@@ -221,6 +222,7 @@ def conv_layer( _scope, inpt, filter_shape, stride, stddev=5e-2, wd=0.04):
   with tf.variable_scope(_scope) as scope:
     print("*****",_scope,"**conv layer**",inpt.get_shape(),"**filter**",filter_shape,"**stride**",stride)
     out_channels = filter_shape[3]
+    n = filter_shape[0] * filter_shape[1] * out_channels
     '''
     filter_ = weight_variable(filter_shape)
     conv = tf.nn.conv2d(inpt, filter=filter_, strides=[1, stride, stride, 1], padding="SAME", use_cudnn_on_gpu=True)
@@ -230,7 +232,7 @@ def conv_layer( _scope, inpt, filter_shape, stride, stddev=5e-2, wd=0.04):
     '''
     kernel = _variable_with_weight_decay('weights',
                                          shape=filter_shape,
-                                         stddev=stddev,
+                                         stddev=np.sqrt(2.0/n),
                                          wd=wd)
     conv = tf.nn.conv2d(inpt, kernel, [1, stride, stride, 1], padding='SAME')
     biases = _variable_on_cpu('biases', [out_channels], tf.constant_initializer(0.1))
@@ -302,6 +304,7 @@ def resnet(inpt, n, is_training=True):
     with tf.variable_scope('pool0') as scope:
       filter_ = [1,3,3,1]
       stride_ = [1,2,2,1]
+      print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
       pool0 = tf.nn.max_pool(layers[-1], ksize=filter_, strides=stride_, padding='SAME')
       #pool0 = tf.layers.BatchNormalization(pool0)
       layers.append(pool0)
@@ -314,12 +317,14 @@ def resnet(inpt, n, is_training=True):
       for j in range (num_conv):
         with tf.variable_scope('res%d_%d' % (i+1,j+1)) as scope:
             out_channels = in_channels * channels_increase_factor
-            conv2_x = residual_block( scope.name + 'a', layers[-1], [in_channels,in_channels,out_channels], kernel=3, stride=2, projection=True)
+            conv2 = residual_block( scope.name + 'a', layers[-1], [in_channels,in_channels,out_channels], kernel=3, stride=2, projection=True)
+            layers.append(conv2)
             #in_channels = out_channels 
             #out_channels = in_channels * 4
-            conv2 = residual_block( scope.name + 'b', conv2_x, [in_channels,in_channels,out_channels], kernel=3, stride=1, projection=False)
+            conv2 = residual_block( scope.name + 'b', conv2, [in_channels,in_channels,out_channels], kernel=3, stride=1, projection=False)
+            layers.append(conv2)
+            conv2 = residual_block( scope.name + 'c', conv2, [in_channels,in_channels,out_channels], kernel=3, stride=1, projection=False)
             #conv2 = residual_block(scope.name + '-2',conv2_x, out_channels, False)
-            layers.append(conv2_x)
             layers.append(conv2)
             in_channels = out_channels 
 
@@ -341,7 +346,7 @@ def resnet(inpt, n, is_training=True):
       out_fc_units *=  1
       with tf.variable_scope('fc_' + str(i+1)) as scope:
         #out = KL.Dense( units=out_fc_units, activation='relu', name=scope.name)( inputs=layers[-1])
-        out = tf.layers.dense( inputs=layers[-1], units=out_fc_units, activation='relu', name=scope.name)
+        out = tf.layers.dense( inputs=layers[-1], units=out_fc_units, activation='relu', use_bias=True, kernel_initializer=tf.uniform_unit_scaling_initializer(factor=1.0), bias_initializer=tf.constant_initializer(), name=scope.name)
         out = tf.layers.dropout( inputs=out, rate=0.2, seed=101, training=is_training)
         #out = KL.Dense( inputs=layers[-1], units=out_fc_units, activation='relu', name=scope.name)
         #out = BatchNorm(name=scope.name)(out, training=False)

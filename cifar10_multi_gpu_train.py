@@ -58,7 +58,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_dir', '/data1/data/models',
                            """Directory where to write event logs """
                            """and checkpoint.""")
-tf.app.flags.DEFINE_integer('max_steps', 100,
+tf.app.flags.DEFINE_integer('max_steps', 225000,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_integer('num_gpus', 2,
                             """How many GPUs to use.""")
@@ -329,7 +329,7 @@ def train(model_name='mymodel.ckpt'):
       assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
 
       #if step % 10 == 0:
-      if step % 10 == 0:
+      if step % 100 == 0:
         test_accu_value, test_loss_value = sess.run([test_accu, test_loss])
         num_examples_per_step = FLAGS.batch_size * FLAGS.num_gpus
         examples_per_sec = num_examples_per_step / duration
@@ -483,14 +483,13 @@ def print_groups(i_file,g_count_key='prob',g_keys=['label','pred'],g_sort_keys=[
 
 def main(argv=None):  # pylint: disable=unused-argument
   mode = 'test'
-  model_name = 'res_d20_c16.cpkt'
   model_name = 'res_d32_c32.cpkt'
   #model_name = 'res_d44_c64_f7_p5_lr01_fc1024.cpkt-499'
-  model_name = 'dr1_res_d44_c64_f5_p5_lr01_fc1024.cpkt'
+  #model_name = 'dr1_res_d44_c64_f5_p5_lr01_fc1024.cpkt'
   #model_name = 'dr1_res_d44_c64_f5_p5_lr01_fc1024.cpkt-99'
   #model_name = 'res_d44_c64_f5_p5_lr01_fc1024.cpkt-499'
   #model_name = 'res_d44_c64_f3_p3_lr01_fc1024.cpkt-499'
-  #model_name = 'res_d44_c64_f5_p3_lr01.cpkt-3499'
+  model_name = 'res_d44_c64_f5_p3_lr01.cpkt'
   #cifar10.maybe_download_and_extract()
   if len(argv) > 0:
     print("arguments passed",argv[:])
