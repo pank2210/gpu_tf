@@ -58,7 +58,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_dir', '/data1/data/models',
                            """Directory where to write event logs """
                            """and checkpoint.""")
-tf.app.flags.DEFINE_integer('max_steps', 500,
+tf.app.flags.DEFINE_integer('max_steps', 100,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_integer('num_gpus', 2,
                             """How many GPUs to use.""")
@@ -202,6 +202,7 @@ def train(model_name='mymodel.ckpt'):
 
     # Create an optimizer that performs gradient descent.
     opt = tf.train.GradientDescentOptimizer(lr)
+    #opt = tf.train.RMSPropOptimizer(lr)
 
     # Get images and labels for CIFAR-10.
     '''
@@ -485,7 +486,10 @@ def main(argv=None):  # pylint: disable=unused-argument
   model_name = 'res_d20_c16.cpkt'
   model_name = 'res_d32_c32.cpkt'
   #model_name = 'res_d44_c64_f7_p5_lr01_fc1024.cpkt-499'
-  model_name = 'res_d44_c64_f7_p5_lr01_fc1024.cpkt'
+  model_name = 'dr1_res_d44_c64_f5_p5_lr01_fc1024.cpkt'
+  #model_name = 'dr1_res_d44_c64_f5_p5_lr01_fc1024.cpkt-99'
+  #model_name = 'res_d44_c64_f5_p5_lr01_fc1024.cpkt-499'
+  #model_name = 'res_d44_c64_f3_p3_lr01_fc1024.cpkt-499'
   #model_name = 'res_d44_c64_f5_p3_lr01.cpkt-3499'
   #cifar10.maybe_download_and_extract()
   if len(argv) > 0:

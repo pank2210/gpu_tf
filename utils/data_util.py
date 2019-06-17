@@ -45,7 +45,7 @@ class Data(object):
   def initialize_from_config(self):
     mname = "initialize_from_config"
 
-    self.no_classes = 5     
+    self.no_classes = 2     
     self.pre_fetch = 4     
     self.batch_random_seed = 1001     
     self.cur_batch_offset = 0 
@@ -753,7 +753,7 @@ class Data(object):
        
       #x_buf = x_buf.astype('float32') / 255
       x_buf = x_buf.astype('float32')
-      #x_buf /= 255.0
+      x_buf /= 255.0
       x_buf -= np.mean(x_buf)
       x_buf /= np.std(x_buf)
       # Crop the central [height, width] of the image.
@@ -810,8 +810,8 @@ def print_groups(df,g_count_key='prob',g_keys=['label','pred'],g_sort_keys=['lab
 if __name__ == "__main__":
   #prep_data()
   data = Data()
-  from_index, batch_size = cmd_util.get_preprocessing_index(sys.argv[1:])
+  #from_index, batch_size = cmd_util.get_preprocessing_index(sys.argv[1:])
   #print(from_index,batch_size)
-  data.preprocess_images( convert_to_greyscale=False, from_index=from_index, batch_size=batch_size)
+  #data.preprocess_images( convert_to_greyscale=False, from_index=from_index, batch_size=batch_size)
   #data.load_img_data()
-  #data.initialize_for_batch_load()
+  data.initialize_for_batch_load()

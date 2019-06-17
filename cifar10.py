@@ -67,7 +67,7 @@ tf.app.flags.DEFINE_integer('no_classes', NUM_CLASSES,
 
 # Constants describing the training process.
 MOVING_AVERAGE_DECAY = 0.9999     # The decay to use for the moving average.
-NUM_EPOCHS_PER_DECAY = 100.0      # Epochs after which learning rate decays.
+NUM_EPOCHS_PER_DECAY = 10.0      # Epochs after which learning rate decays.
 LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
 #INITIAL_LEARNING_RATE = 0.0065   # Initial learning rate.
 INITIAL_LEARNING_RATE = 0.1   # Initial learning rate.
@@ -293,14 +293,14 @@ def resnet(inpt, n, is_training=True):
     print("**inpt**",inpt.get_shape(),"***num_conv***",num_conv)
     #'''
     with tf.variable_scope('conv0') as scope:
-      conv1 = conv_layer( scope.name, layers[-1], [7, 7, inpt.get_shape()[-1], out_channels], stride=2)
+      conv1 = conv_layer( scope.name, layers[-1], [5, 5, inpt.get_shape()[-1], out_channels], stride=2)
       #conv1 = BatchNorm(name=scope.name)(conv1, training=False)
       #conv1 = tf.layers.batch_normalization(conv1)
       #conv1 = tf.nn.relu( conv1, name=scope.name)
       layers.append(conv1)
 
     with tf.variable_scope('pool0') as scope:
-      filter_ = [1,5,5,1]
+      filter_ = [1,3,3,1]
       stride_ = [1,2,2,1]
       pool0 = tf.nn.max_pool(layers[-1], ksize=filter_, strides=stride_, padding='SAME')
       #pool0 = tf.layers.BatchNormalization(pool0)
