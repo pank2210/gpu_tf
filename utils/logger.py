@@ -10,6 +10,7 @@ class myLogger:
     logging.basicConfig(format=FORMAT,filename=logFileName,filemode='a',level=logging.INFO)
     self.d = {'clientip': '127.0.0.1', 'user': 'pp123'}
     self.logger = logging.getLogger(logFileName)
+    self.logger.propagate = False
     #self.logger = logging.getLogger('tcpserver')
 
   def log(self,msg,level=0):

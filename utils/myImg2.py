@@ -2,7 +2,8 @@
 import sys, getopt
 
 import numpy as np
-from scipy import misc
+#from scipy import misc
+import cv2 as misc
 import math
 import re
 import os.path
@@ -537,7 +538,7 @@ if __name__ == "__main__":
    i_imgpath = '/data1/data/img/15916_right.jpeg'
    #i_imgpath = '/data1/data/croped/15916_right.jpeg'
    #i_imgpath = '/tmp/15916_right.jpeg'
-   i_imgpath = '/data1/data/croped_color/36181_left.jpeg'
+   i_imgpath = '/disk1/data1/data/croped_color/36181_left.jpeg'
    i_cdir = '/tmp/'
    print("Input image file is [{}]".format(i_imgpath))
    print("Input working directory is [{}]".format(i_cdir))
