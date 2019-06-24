@@ -56,7 +56,7 @@ NUM_EXAMPLES_PER_EPOCH_FOR_EVAL = cifar10_input.NUM_EXAMPLES_PER_EPOCH_FOR_EVAL
 FLAGS = tf.app.flags.FLAGS
 
 # Basic model parameters.
-tf.app.flags.DEFINE_integer('batch_size', 8,
+tf.app.flags.DEFINE_integer('batch_size', 4,
                             """Number of images to process in a batch.""")
 tf.app.flags.DEFINE_string('data_dir', '/tmp/cifar10_data',
                            """Path to the CIFAR-10 data directory.""")
@@ -440,6 +440,14 @@ def inception(inpt, is_training=True):
                              pool_stride=1)
       layers.append(out)
      
+    #Max pool layer 
+    with tf.variable_scope('maxpool4b') as scope:
+      filter_ = [1,3,3,1]
+      stride_ = [1,2,2,1]
+      print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
+      out = maxpool_layer(layers[-1], filter_, stride_, padding_='SAME')
+      layers.append(out)
+     
     #Layer 4c out channels=512 
     output_channels = [128,128,256,24,64,64] 
     with tf.variable_scope('4c') as scope:
@@ -464,6 +472,15 @@ def inception(inpt, is_training=True):
                              pool_stride=1)
       layers.append(out)
      
+    #Max pool layer 
+    with tf.variable_scope('maxpool4d') as scope:
+      filter_ = [1,3,3,1]
+      stride_ = [1,2,2,1]
+      print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
+      out = maxpool_layer(layers[-1], filter_, stride_, padding_='SAME')
+      layers.append(out)
+     
+    #Layer 4c out channels=512 
     #*******************second output dump start********************************* 
     #out2 - Second intermeiate output 
     #Avg pool layer 
@@ -517,7 +534,7 @@ def inception(inpt, is_training=True):
       layers.append(out)
      
     #Max pool layer 
-    with tf.variable_scope('maxpool2') as scope:
+    with tf.variable_scope('maxpool4e') as scope:
       filter_ = [1,3,3,1]
       stride_ = [1,2,2,1]
       print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
@@ -674,7 +691,7 @@ def resnet(inpt, n, is_training=True):
      
     return layers[-1]
 
-def loss(logits, labels, loss_type='losses', id=''):
+def loss(logits, labels, loss_type='losses'):
   """Add L2Loss to all the trainable variables.
 
   Add summary for "Loss" and "Loss/avg".
@@ -688,8 +705,8 @@ def loss(logits, labels, loss_type='losses', id=''):
   """
   # Calculate the average cross entropy loss across the batch.
   labels = tf.cast(labels, tf.int64)
-  print("labels  ================",labels.get_shape())
-  print("logits id ",id,"================",logits.get_shape())
+  print("labels ================",labels.get_shape())
+  print("logits ================",logits.get_shape())
   #cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
   cross_entropy = tf.nn.softmax_cross_entropy_with_logits_v2(
       labels=labels, logits=logits, name='cross_entropy_per_example')
@@ -697,24 +714,21 @@ def loss(logits, labels, loss_type='losses', id=''):
   cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
   print("cross_entropy_mean","================",cross_entropy_mean.get_shape())
    
-   
-  #test_probs = tf.reduce_max(logits,1)
-  #_, test_accu = tf.metrics.accuracy(labels=tf.argmax(labels,1),predictions=tf.argmax(logits,1))
   if loss_type != 'losses':
-    tf.add_to_collection( loss_type + id, cross_entropy_mean)
+    tf.add_to_collection( loss_type, cross_entropy_mean)
     _, test_accu = tf.metrics.accuracy(labels=tf.argmax(labels,1),
-                                       predictions=tf.argmax(logits,1))
+                                           predictions=tf.argmax(logits,1))
     preds = tf.argmax( logits, 1)
     probs = tf.reduce_max( logits, 1)
-    tf.add_to_collection( 'test_accuracy' + id, test_accu)
-    tf.add_to_collection( 'test_preds' + id, preds)
-    tf.add_to_collection( 'test_probs' + id, probs)
+    tf.add_to_collection( 'test_accuracy', test_accu)
+    tf.add_to_collection( 'test_preds', preds)
+    tf.add_to_collection( 'test_probs', probs)
      
     return preds, probs
   else:
     tf.add_to_collection( loss_type, cross_entropy_mean)
      
-    return tf.add_n(tf.get_collection(loss_type), name='total_' + loss_type + id)
+    return tf.add_n(tf.get_collection(loss_type), name='total_' + loss_type)
 
 def _add_loss_summaries(total_loss, loss_type='losses'):
   """Add summaries for losses in CIFAR-10 model.

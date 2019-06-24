@@ -55,10 +55,10 @@ import utils.data_util as du
 
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_string('train_dir', '/data1/data/models',
+tf.app.flags.DEFINE_string('train_dir', '/disk1/data1/data/models',
                            """Directory where to write event logs """
                            """and checkpoint.""")
-tf.app.flags.DEFINE_integer('max_steps', 30000,
+tf.app.flags.DEFINE_integer('max_steps', 500,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_integer('num_gpus', 2,
                             """How many GPUs to use.""")
@@ -68,86 +68,8 @@ tf.app.flags.DEFINE_string('eval_dir', '/tmp/cifar10_eval',
                            """Directory where to write event logs.""")
 tf.app.flags.DEFINE_string('eval_data', 'test',
                            """Either 'test' or 'train_eval'.""")
-tf.app.flags.DEFINE_string('checkpoint_dir', '/data1/data/models',
+tf.app.flags.DEFINE_string('checkpoint_dir', '/disk1/data1/data/models',
                            """Directory where to read model checkpoints.""")
-
-
-def tower_loss2(scope, images, labels, loss_type='losses'):
-  """Calculate the total loss on a single tower running the CIFAR model.
-
-  Args:
-    scope: unique prefix string identifying the CIFAR tower, e.g. 'tower_0'
-    images: Images. 4D tensor of shape [batch_size, height, width, 3].
-    labels: Labels. 1D tensor of shape [batch_size].
-
-  Returns:
-     Tensor of shape [] containing the total loss for a batch of data
-  """
-
-  #Build inference Graph.
-  #set is_training flag for use in resnet for activating or deactivating dropout based on training
-  max_model_outputs = 3
-  preds = []
-  probs = []
-  is_training = True 
-   
-  if loss_type != 'losses':
-    is_training = False
-  
-  logits0, logits1, logits2 = cifar10.inception(inpt=images,is_training=is_training)
-  logits = [logits0, logits1, logits2]
-  #print("logits ############",logits.get_shape(),len(logits),type(logits))
-
-  # Build the portion of the Graph calculating the losses. Note that we will
-  # assemble the total_loss using a custom function below.
-  if loss_type != 'losses':
-    #for i,i_logits in enumerate(logits):
-    '''
-    pred, prob = cifar10.loss( logits, labels, loss_type, '0')
-    preds.append(pred)
-    probs.append(prob)
-    pred, prob = cifar10.loss( logits1, labels, loss_type, str(i))
-    preds.append(pred)
-    probs.append(prob)
-    '''
-    for i in range(max_model_outputs):
-      pred, prob = cifar10.loss( logits[i], labels, loss_type, str(i))
-      preds.append(pred)
-      probs.append(prob)
-  else:
-      _ = cifar10.loss(logits0, labels, loss_type)
-      #_ = cifar10.loss(logits, labels, loss_type)
-  #print("After loss....")
-
-  # Assemble all of the losses for the current tower only.
-
-  # Calculate the total loss for the current tower.
-  #print("total_loss ############",total_loss.get_shape())
-  
-  if loss_type != 'losses':
-    mean_accuracy = []
-    for i in range(max_model_outputs):
-      accuracies = tf.get_collection( 'test_accuracy' + str(i), scope)
-      mean_accuracy.append(tf.reduce_mean( accuracies))
-     
-    return None, mean_accuracy, preds, probs
-  else:
-    losses = tf.get_collection( loss_type, scope)
-    #losses = tf.get_collection('losses')
-    #print("losses ############",len(losses),losses,type(losses))
-    # Assemble all of the losses for the current tower only.
-    total_loss = tf.add_n(losses, name='total_' + loss_type)
-    # Attach a scalar summary to all individual losses and the total loss; do the
-    # same for the averaged version of the losses.
-    for l in losses + [total_loss]:
-      # Remove 'tower_[0-9]/' from the name in case this is a multi-GPU training
-      # session. This helps the clarity of presentation on tensorboard.
-      loss_name = re.sub('%s_[0-9]*/' % cifar10.TOWER_NAME, '', l.op.name)
-      #print("loss_name - ",loss_name)
-      tf.summary.scalar(loss_name, l)
-
-    return total_loss, None
-
 
 def tower_loss(scope, images, labels, loss_type='losses'):
   """Calculate the total loss on a single tower running the CIFAR model.
@@ -313,7 +235,6 @@ def train(model_name='mymodel.ckpt'):
             # Calculate the loss for one tower of the CIFAR model. This function
             # constructs the entire CIFAR model but shares the variables across
             # all towers.
-            #loss, _ = tower_loss2(scope, image_batch, label_batch)
             loss, _ = tower_loss(scope, image_batch, label_batch)
             print("scope - ",scope,"loss #############",loss.get_shape())
 
@@ -328,8 +249,9 @@ def train(model_name='mymodel.ckpt'):
              
             #validation/Test set 
             _, test_image_batch, test_label_batch = _test_iterator.get_next()
-            #_, test_accus, _, _ = tower_loss2(scope, test_image_batch, test_label_batch, loss_type='test_losses')
             _, test_accu, _, _ = tower_loss(scope, test_image_batch, test_label_batch, loss_type='test_losses')
+            
+            #below code prints gradiants from the networks.
             #'''
             print("grads ############# len ",len(grads))
             for i,grad in enumerate(grads):
@@ -408,14 +330,20 @@ def train(model_name='mymodel.ckpt'):
 
       assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
 
-      #if step % 10 == 0:
       if step % 10 == 0:
-        #test_accu_value = sess.run([test_accus])
-        test_accu_value = sess.run([test_accu])
+        test_accu_value = sess.run(test_accu)
         num_examples_per_step = FLAGS.batch_size * FLAGS.num_gpus
         examples_per_sec = num_examples_per_step / duration
         sec_per_batch = duration / FLAGS.num_gpus
+        
+        #print("*******test_accu[%s]*******" % (test_accu_value)) 
+        format_str = ('%s: step %d, loss=%.2f (%.1f examples/sec; %.3f '
+                      'sec/batch)  test accu[%.2f]')
+        print (format_str % (datetime.now(), step, loss_value,
+                             examples_per_sec, sec_per_batch, 
+                             test_accu_value))
          
+        ''' 
         if type(test_accu_value) is list: 
           format_str = ('%s: step %d, loss=%.2f (%.1f examples/sec; %.3f '
                       'sec/batch)  accu0[%.2f] accu1[%.2f] accu2[%.2f]')
@@ -428,6 +356,7 @@ def train(model_name='mymodel.ckpt'):
           print (format_str % (datetime.now(), step, loss_value,
                              examples_per_sec, sec_per_batch, 
                              test_accu_value))
+        ''' 
 
       if step % 100 == 0:
         summary_str = sess.run(summary_op)
@@ -577,8 +506,9 @@ def main(argv=None):  # pylint: disable=unused-argument
   #model_name = 'dr1_res_d44_c64_f5_p5_lr01_fc1024.cpkt-99'
   #model_name = 'res_d44_c64_f5_p5_lr01_fc1024.cpkt-499'
   #model_name = 'res_d44_c64_f3_p3_lr01_fc1024.cpkt-499'
-  model_name = 'res_2k_d44_c64_f5_p3_lr01.cpkt'
-  #model_name = 'res_2k_d44_c64_f5_p3_lr01.cpkt-6999-199'
+  
+  model_name = 'incep_basic_lr01.cpkt'
+   
   #cifar10.maybe_download_and_extract()
   if len(argv) > 0:
     print("arguments passed",argv[:])
