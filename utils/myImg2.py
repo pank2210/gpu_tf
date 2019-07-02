@@ -3,7 +3,11 @@ import sys, getopt
 
 import numpy as np
 #from scipy import misc
+<<<<<<< HEAD
 import cv2 as misc
+=======
+import cv2 as misc
+>>>>>>> 098858f14da8fdd37d9c037feb5bef7c4c6220c4
 import math
 import re
 import os.path
@@ -629,8 +633,12 @@ if __name__ == "__main__":
    i_imgpath = '/data1/data/img/15916_right.jpeg'
    #i_imgpath = '/data1/data/croped/15916_right.jpeg'
    #i_imgpath = '/tmp/15916_right.jpeg'
+<<<<<<< HEAD
    i_imgpath = '/Users/pankaj.petkar/dev/ret/dr_color/36181_left.jpeg'
    #i_imgpath = '/Users/pankaj.petkar/dev/ret/dr/dr_img/36181_left.jpeg'
+=======
+   i_imgpath = '/disk1/data1/data/croped_color/36181_left.jpeg'
+>>>>>>> 098858f14da8fdd37d9c037feb5bef7c4c6220c4
    i_cdir = '/tmp/'
    print("Input image file is [{}]".format(i_imgpath))
    print("Input working directory is [{}]".format(i_cdir))

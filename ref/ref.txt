@@ -1,0 +1,5 @@
+1. Convolution visualization https://towardsdatascience.com/understanding-your-convolution-network-with-visualizations-a4883441533b
+2. Tensorflow best practices https://blog.metaflow.fr/tensorflow-saving-restoring-and-mixing-multiple-models-c4c94d5d7125
+3. Inception reserach work https://github.com/tensorflow/models/tree/master/research/inception
+4. Inception explained https://www.analyticsvidhya.com/blog/2018/10/understanding-inception-network-from-scratch/
+

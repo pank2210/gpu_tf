@@ -43,7 +43,7 @@ import tarfile
 import numpy as np
 from six.moves import urllib
 import tensorflow as tf
-import keras.layers as KL
+import tensorflow.keras.layers as KL
 
 import cifar10_input
 
@@ -68,7 +68,7 @@ tf.app.flags.DEFINE_integer('no_classes', NUM_CLASSES,
 
 # Constants describing the training process.
 MOVING_AVERAGE_DECAY = 0.9999     # The decay to use for the moving average.
-NUM_EPOCHS_PER_DECAY = 10.0      # Epochs after which learning rate decays.
+NUM_EPOCHS_PER_DECAY = 5.0      # Epochs after which learning rate decays.
 LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
 #INITIAL_LEARNING_RATE = 0.0065   # Initial learning rate.
 INITIAL_LEARNING_RATE = 0.1   # Initial learning rate.
@@ -218,18 +218,18 @@ def softmax_layer(inpt, shape):
 
     return fc_h
 
+def maxpool_layer( inpt, filter_, stride_, padding_='SAME'):
+    return tf.nn.max_pool(inpt, ksize=filter_, strides=stride_, padding=padding_)
+
+def avgpool_layer( inpt, filter_, stride_, padding_='SAME'):
+    return tf.nn.avg_pool(inpt, ksize=filter_, strides=stride_, padding=padding_)
+
 def conv_layer( _scope, inpt, filter_shape, stride, stddev=5e-2, wd=0.04):
   with tf.variable_scope(_scope) as scope:
     print("*****",_scope,"**conv layer**",inpt.get_shape(),"**filter**",filter_shape,"**stride**",stride)
     out_channels = filter_shape[3]
     n = filter_shape[0] * filter_shape[1] * out_channels
-    '''
-    filter_ = weight_variable(filter_shape)
-    conv = tf.nn.conv2d(inpt, filter=filter_, strides=[1, stride, stride, 1], padding="SAME", use_cudnn_on_gpu=True)
-    mean, var = tf.nn.moments(conv, axes=[0,1,2])
-    beta = tf.Variable(tf.zeros([out_channels]), name="beta")
-    gamma = weight_variable([out_channels], name="gamma")
-    '''
+    
     kernel = _variable_with_weight_decay('weights',
                                          shape=filter_shape,
                                          stddev=np.sqrt(2.0/n),
@@ -245,6 +245,38 @@ def conv_layer( _scope, inpt, filter_shape, stride, stddev=5e-2, wd=0.04):
      
     return conv
 
+def inception_block( _scope, inpt, output_depths, conv_filters=[3,5], conv_strides=[2,2], pool_filter=3, pool_stride=1):
+  with tf.variable_scope(_scope) as scope:
+    input_depth = inpt.get_shape().as_list()[3]
+    out_channel_1x1, reduce_channel_3x3, out_channel_3x3, reduce_channel_5x5, out_channel_5x5, pool_proj = output_depths
+     
+    print("*****",_scope,"**inception_block**",inpt.get_shape(),"**cfilter**",conv_filters,"**cstride**",conv_strides,"**pfilter**",pool_filter,"**pstride**",pool_stride)
+     
+    #Conv1X1 layer of inception block 
+    print("**",_scope,"***1st conv block***")
+    conv1x1 = conv_layer( _scope + '_a1x1', inpt, filter_shape=[1,1,input_depth, out_channel_1x1], stride=1)
+     
+    #Conv3X3 layer of inception block 
+    print("**",_scope,"***2nd conv block***")
+    conv3x3 = conv_layer( _scope + '_b1x1', inpt, filter_shape=[1,1,input_depth, reduce_channel_3x3], stride=1)
+    conv3x3 = conv_layer( _scope + '_b3x3', conv3x3, filter_shape=[conv_filters[0],conv_filters[0],reduce_channel_3x3, out_channel_3x3], stride=conv_strides[0])
+     
+    #Conv5X5 layer of inception block 
+    print("**",_scope,"***3rd conv block***")
+    conv5x5 = conv_layer( _scope + '_c1x1', inpt, filter_shape=[1,1,input_depth, reduce_channel_5x5], stride=1)
+    conv5x5 = conv_layer( _scope + '_c5x5', conv5x5, filter_shape=[conv_filters[1],conv_filters[1],reduce_channel_5x5, out_channel_5x5], stride=conv_strides[1])
+     
+    #Pool layer of inception block 
+    print("**",_scope,"***max_pool block***")
+    pool3x3 = maxpool_layer( inpt, filter_=[1,pool_filter,pool_filter,1], stride_=[1,pool_stride,pool_stride,1], padding_='SAME')
+    print("*****",_scope,"**maxpool layer**",pool3x3.get_shape(),"**filter**",pool_filter,"**stride**",pool_stride)
+    pool3x3 = conv_layer( _scope + '_d1x1', pool3x3, filter_shape=[1,1,input_depth, pool_proj], stride=1)
+     
+    out = tf.concat([conv1x1,conv3x3,conv5x5,pool3x3],axis=3,name=_scope + '_concat') 
+    print("******",_scope,"***stack***",out.get_shape().as_list(),"****")
+    
+    return out
+
 def residual_block( _scope, inpt, output_depth, down_sample=False, kernel=3, stride=2, projection=True, stddev=1e-2, wd=None):
   with tf.variable_scope(_scope) as scope:
     input_depth = inpt.get_shape().as_list()[3]
@@ -255,9 +287,8 @@ def residual_block( _scope, inpt, output_depth, down_sample=False, kernel=3, str
         inpt = tf.nn.max_pool(inpt, ksize=filter_, strides=stride_, padding='SAME')
 
     print("***",_scope,"**resnet block**",inpt.get_shape(),"**channels**",output_depth,"***stride*",stride)
-    #conv = conv_layer( "%s-%s" % (_scope,'1'),inpt, [ 1, 1, input_depth, filter_1], stride=2, stddev, wd)
-    conv = conv_layer( "%s-%s" % (_scope,'1'),inpt, [ 1, 1, input_depth, filter_1], stride=stride)
-    conv = conv_layer( "%s-%s" % (_scope,'2'),conv, [ kernel, kernel, filter_1, filter_2], stride=1)
+    conv = conv_layer( "%s-%s" % (_scope,'1'),inpt, [ 1, 1, input_depth, filter_1], stride=1)
+    conv = conv_layer( "%s-%s" % (_scope,'2'),conv, [ kernel, kernel, filter_1, filter_2], stride=stride)
     conv = conv_layer( "%s-%s" % (_scope,'3'),conv, [ 1, 1, filter_2, filter_3], stride=1)
      
     if input_depth != output_depth:
@@ -278,6 +309,369 @@ def residual_block( _scope, inpt, output_depth, down_sample=False, kernel=3, str
      
     return conv
 
+# Inception Net architectures used for CIFAR-10
+def inception(inpt, is_training=True):
+    layers = []
+    layers1 = []
+   
+    enable_pooling = True
+    channels_increase_factor = 2
+    layers.append(inpt) 
+    print("**inpt**",inpt.get_shape(),"***")
+    
+    ''' 
+    out_channels = 64
+    with tf.variable_scope('1a') as scope:
+      out = conv_layer( scope.name, layers[-1], [7, 7, inpt.get_shape()[-1], out_channels], stride=2)
+      layers.append(out)
+      filter_ = [1,3,3,1]
+      stride_ = [1,2,2,1]
+      print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
+      out = maxpool_layer(layers[-1], filter_, stride_, padding_='SAME')
+      layers.append(out)
+      print("*****",scope.name,"**out**",out.get_shape())
+     
+    out_channels = 128
+    with tf.variable_scope('1b') as scope:
+      out = conv_layer( scope.name, layers[-1], [5, 5, layers[-1].get_shape()[-1], out_channels], stride=1)
+      layers.append(out)
+      filter_ = [1,3,3,1]
+      stride_ = [1,2,2,1]
+      print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
+      out = maxpool_layer(layers[-1], filter_, stride_, padding_='SAME')
+      layers.append(out)
+      print("*****",scope.name,"**out**",out.get_shape())
+     
+    out_channels = 256
+    with tf.variable_scope('2a') as scope:
+      out = conv_layer( scope.name, layers[-1], [3, 3, layers[-1].get_shape()[-1], out_channels], stride=1)
+      layers.append(out)
+      filter_ = [1,3,3,1]
+      stride_ = [1,2,2,1]
+      print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
+      out = maxpool_layer(layers[-1], filter_, stride_, padding_='SAME')
+      layers.append(out)
+      print("*****",scope.name,"**out**",out.get_shape())
+    ''' 
+     
+    #Layer 1a out channels=256 
+    #out_channel_1x1, reduce_channel_3x3, out_channel_3x3, reduce_channel_5x5, out_channel_5x5, pool_proj = output_depths
+    output_channels = [8,16,16,16,16,8] 
+    with tf.variable_scope('1a') as scope:
+      out = inception_block( scope.name, 
+                             inpt=layers[-1], 
+			     output_depths=output_channels,
+                             conv_filters=[3,5], 
+                             conv_strides=[1,1], 
+                             pool_filter=5, 
+                             pool_stride=1)
+      layers.append(out)
+     
+    #Max pool layer 
+    with tf.variable_scope('maxpool1a') as scope:
+      filter_ = [1,3,3,1]
+      stride_ = [1,2,2,1]
+      print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
+      out = maxpool_layer(layers[-1], filter_, stride_, padding_='SAME')
+      layers.append(out)
+     
+    #Layer 3a out channels=256 
+    #out_channel_1x1, reduce_channel_3x3, out_channel_3x3, reduce_channel_5x5, out_channel_5x5, pool_proj = output_depths
+    output_channels = [64,96,128,16,32,32] 
+    with tf.variable_scope('3a') as scope:
+      out = inception_block( scope.name, 
+                             inpt=layers[-1], 
+			     output_depths=output_channels,
+                             conv_filters=[3,5], 
+                             conv_strides=[1,1], 
+                             pool_filter=3, 
+                             pool_stride=1)
+      layers.append(out)
+     
+    #Max pool layer 
+    with tf.variable_scope('maxpool3a') as scope:
+      filter_ = [1,3,3,1]
+      stride_ = [1,2,2,1]
+      print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
+      out = maxpool_layer(layers[-1], filter_, stride_, padding_='SAME')
+      layers.append(out)
+     
+    #Layer 4a out channels=512 
+    #Layer 3b out channels=480 
+    output_channels = [128,128,192,32,96,64] 
+    with tf.variable_scope('3b') as scope:
+      out = inception_block( scope.name, 
+                             inpt=layers[-1], 
+			     output_depths=output_channels,
+                             conv_filters=[3,5], 
+                             conv_strides=[1,1], 
+                             pool_filter=3, 
+                             pool_stride=1)
+      layers.append(out)
+     
+    #Max pool layer 
+    with tf.variable_scope('maxpool3b') as scope:
+      filter_ = [1,3,3,1]
+      stride_ = [1,2,2,1]
+      print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
+      out = maxpool_layer(layers[-1], filter_, stride_, padding_='SAME')
+      layers.append(out)
+     
+    #Layer 4a out channels=512 
+    output_channels = [192,96,208,16,48,64] 
+    with tf.variable_scope('4a') as scope:
+      out = inception_block( scope.name, 
+                             inpt=layers[-1], 
+			     output_depths=output_channels,
+                             conv_filters=[3,5], 
+                             conv_strides=[1,1], 
+                             pool_filter=3, 
+                             pool_stride=1)
+      layers.append(out)
+     
+    #Max pool layer 
+    with tf.variable_scope('maxpool4a') as scope:
+      filter_ = [1,3,3,1]
+      stride_ = [1,2,2,1]
+      print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
+      out = maxpool_layer(layers[-1], filter_, stride_, padding_='SAME')
+      layers.append(out)
+     
+    #Layer 3a out channels=256 
+    ''' 
+    #*******************first output dump start********************************* 
+    #out1 - First intermeiate output 
+    #Avg pool layer 
+    layers1.append(layers[-1])
+    with tf.variable_scope('avgpool_out1') as scope:
+      filter_ = [1,7,7,1]
+      stride_ = [1,1,1,1]
+      print("*****",scope.name,"**avgpool layer**",layers1[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
+      out1 = avgpool_layer(layers1[-1], filter_, stride_, padding_='SAME')
+      out1 = GlobalAveragePooling2D(name='avg_pool_5_3x3/1')(x)
+      layers1.append(out1)
+     
+    #flatten
+    with tf.variable_scope('flatten_out1') as scope:
+      out1 = tf.layers.flatten( layers1[-1], name=scope.name)
+      print("*****",scope.name,out1.get_shape())
+      layers1.append(out1)
+    
+    #FC layer
+    fc_layers = 1
+    fc_units_increment_factor = 1
+    out_fc_units = 1024
+    for i in range(fc_layers):
+      in_fc_units = out_fc_units
+      out_fc_units *=  1
+      with tf.variable_scope('fc_out1_' + str(i)) as scope:
+        out = tf.layers.dense( inputs=layers1[-1], units=out_fc_units, activation='relu', use_bias=True, kernel_initializer=tf.uniform_unit_scaling_initializer(factor=1.0), bias_initializer=tf.constant_initializer(), name=scope.name)
+        out = tf.layers.dropout( inputs=out, rate=0.5, seed=101, training=is_training)
+        layers1.append(out)
+        #out1 = tf.layers.dense( inputs=layers1[-1], units=out_fc_units, activation='relu', use_bias=True, kernel_initializer=tf.uniform_unit_scaling_initializer(factor=1.0), bias_initializer=tf.constant_initializer(), name=scope.name)
+        #out1 = tf.layers.dropout( inputs=out1, rate=0.5, seed=101, training=is_training)
+        print("*****",scope.name,out.get_shape())
+     
+    #softmax
+    with tf.variable_scope('final_out1') as scope:
+        out1 = tf.layers.dense( layers1[-1], NUM_CLASSES, activation='softmax', name=scope.name)
+        print("*****",scope.name,out1.get_shape())
+        layers1.append(out1)
+    ''' 
+     
+    #*******************first output dump ends********************************* 
+     
+    #Layer 4b out channels=512 
+    output_channels = [160,112,224,24,64,64] 
+    with tf.variable_scope('4b') as scope:
+      out = inception_block( scope.name, 
+                             inpt=layers[-1], 
+			     output_depths=output_channels,
+                             conv_filters=[3,5], 
+                             conv_strides=[1,1], 
+                             pool_filter=3, 
+                             pool_stride=1)
+      layers.append(out)
+     
+    #Max pool layer 
+    with tf.variable_scope('maxpool4b') as scope:
+      filter_ = [1,3,3,1]
+      stride_ = [1,2,2,1]
+      print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
+      out = maxpool_layer(layers[-1], filter_, stride_, padding_='SAME')
+      layers.append(out)
+     
+    #Layer 4c out channels=512 
+    output_channels = [128,128,256,24,64,64] 
+    with tf.variable_scope('4c') as scope:
+      out = inception_block( scope.name, 
+                             inpt=layers[-1], 
+			     output_depths=output_channels,
+                             conv_filters=[3,5], 
+                             conv_strides=[1,1], 
+                             pool_filter=3, 
+                             pool_stride=1)
+      layers.append(out)
+     
+    #Max pool layer 
+    with tf.variable_scope('maxpool4c') as scope:
+      filter_ = [1,3,3,1]
+      stride_ = [1,2,2,1]
+      print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
+      out = maxpool_layer(layers[-1], filter_, stride_, padding_='SAME')
+      layers.append(out)
+     
+    #Layer 4c out channels=512 
+    #Layer 4d out channels=528 
+    output_channels = [112,144,288,32,64,64] 
+    with tf.variable_scope('4d') as scope:
+      out = inception_block( scope.name, 
+                             inpt=layers[-1], 
+			     output_depths=output_channels,
+                             conv_filters=[3,5], 
+                             conv_strides=[1,1], 
+                             pool_filter=3, 
+                             pool_stride=1)
+      layers.append(out)
+     
+    #Max pool layer 
+    with tf.variable_scope('maxpool4d') as scope:
+      filter_ = [1,3,3,1]
+      stride_ = [1,2,2,1]
+      print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
+      out = maxpool_layer(layers[-1], filter_, stride_, padding_='SAME')
+      layers.append(out)
+     
+    #Layer 4c out channels=512 
+    #*******************second output dump start********************************* 
+    #out2 - Second intermeiate output 
+    #Avg pool layer 
+    layers2 = []
+    '''
+    with tf.variable_scope('avgpool_out2') as scope:
+      filter_ = [1,7,7,1]
+      stride_ = [1,1,1,1]
+      print("*****",scope.name,"**avgpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
+      out2 = avgpool_layer(layers[-1], filter_, stride_, padding_='SAME')
+      layers2.append(out2)
+     
+    #flatten
+    with tf.variable_scope('flatten_out2') as scope:
+      out2 = tf.layers.flatten( layers2[-1], name=scope.name)
+      print("*****",scope.name,out2.get_shape())
+      layers2.append(out2)
+     
+    #FC layer
+    fc_layers = 1
+    fc_units_increment_factor = 2
+    out_fc_units = 1024
+    for i in range(fc_layers):
+      in_fc_units = out_fc_units
+      out_fc_units *=  1
+      with tf.variable_scope('fc_out2_' + str(i+1)) as scope:
+        out2 = tf.layers.dense( inputs=layers2[-1], units=out_fc_units, activation='relu', use_bias=True, kernel_initializer=tf.uniform_unit_scaling_initializer(factor=1.0), bias_initializer=tf.constant_initializer(), name=scope.name)
+        out2 = tf.layers.dropout( inputs=out2, rate=0.5, seed=101, training=is_training)
+        print("*****",scope.name,out2.get_shape())
+        layers2.append(out2)
+     
+    #softmax
+    with tf.variable_scope('final_out2') as scope:
+        out2 = tf.layers.dense( layers2[-1], NUM_CLASSES, activation='softmax', name=scope.name)
+        print("*****",scope.name,out2.get_shape())
+        layers2.append(out2)
+    #*******************second output dump ends********************************* 
+    '''
+     
+     
+    #Layer 4e out channels=528 
+    output_channels = [256,160,320,32,128,128] 
+    with tf.variable_scope('4e') as scope:
+      out = inception_block( scope.name, 
+                             inpt=layers[-1], 
+			     output_depths=output_channels,
+                             conv_filters=[3,5], 
+                             conv_strides=[1,1], 
+                             pool_filter=3, 
+                             pool_stride=1)
+      layers.append(out)
+     
+    #Max pool layer 
+    with tf.variable_scope('maxpool4e') as scope:
+      filter_ = [1,3,3,1]
+      stride_ = [1,2,2,1]
+      print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
+      out = maxpool_layer(layers[-1], filter_, stride_, padding_='SAME')
+      layers.append(out)
+     
+    #Layer 5a out channels=512 
+    output_channels = [256,160,320,32,128,128] 
+    with tf.variable_scope('5a') as scope:
+      out = inception_block( scope.name, 
+                             inpt=layers[-1], 
+			     output_depths=output_channels,
+                             conv_filters=[3,5], 
+                             conv_strides=[1,1], 
+                             pool_filter=3, 
+                             pool_stride=1)
+      layers.append(out)
+     
+    #Layer 5b out channels=512 
+    output_channels = [384,192,384,48,128,128] 
+    with tf.variable_scope('5b') as scope:
+      out = inception_block( scope.name, 
+                             inpt=layers[-1], 
+			     output_depths=output_channels,
+                             conv_filters=[3,5], 
+                             conv_strides=[1,1], 
+                             pool_filter=3, 
+                             pool_stride=1)
+      layers.append(out)
+     
+    out = KL.GlobalAveragePooling2D(name='GlobalAvgPool_5b')(layers[-1])
+    layers.append(out)
+    out = tf.layers.dropout( inputs=out, rate=0.5, seed=101, training=is_training)
+    layers.append(out)
+    
+    '''
+    #Final Average pool layer 
+    with tf.variable_scope('avgpool1') as scope:
+      filter_ = [1,7,7,1]
+      stride_ = [1,1,1,1]
+      print("*****",scope.name,"**avgpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
+      out = avgpool_layer(layers[-1], filter_, stride_, padding_='SAME')
+      layers.append(out)
+     
+    #Flatten layer
+    with tf.variable_scope('flatten') as scope:
+        out = tf.layers.flatten( layers[-1], name=scope.name)
+        layers.append(out)
+        print("*****",scope.name,out.get_shape())
+     
+    #final FC layer
+    fc_layers = 2
+    fc_units_increment_factor = 2
+    out_fc_units = 1024
+    for i in range(fc_layers):
+      in_fc_units = out_fc_units
+      out_fc_units *=  1
+      with tf.variable_scope('fc_final_' + str(i)) as scope:
+        out = tf.layers.dense( inputs=layers[-1], units=out_fc_units, activation='relu', use_bias=True, kernel_initializer=tf.uniform_unit_scaling_initializer(factor=1.0), bias_initializer=tf.constant_initializer(), name=scope.name)
+        out = tf.layers.dropout( inputs=out, rate=0.5, seed=101, training=is_training)
+        layers.append(out)
+        print("*****",scope.name,out.get_shape())
+    '''
+     
+    #Final Softmax Layer
+    with tf.variable_scope('final') as scope:
+        out = tf.layers.dense( layers[-1], NUM_CLASSES, activation='softmax', name=scope.name)
+        layers.append(out)
+        print("*****",scope.name,out.get_shape())
+     
+    #return layers[-1], layers1[-1], layers2[-1]
+    return layers[-1]
+
+
+
 n_dict = {20:1, 32:2, 44:3, 56:4}
 # ResNet architectures used for CIFAR-10
 def resnet(inpt, n, is_training=True):
@@ -294,19 +688,29 @@ def resnet(inpt, n, is_training=True):
     layers.append(inpt) 
     print("**inpt**",inpt.get_shape(),"***num_conv***",num_conv)
     #'''
-    with tf.variable_scope('conv0') as scope:
-      conv1 = conv_layer( scope.name, layers[-1], [5, 5, inpt.get_shape()[-1], out_channels], stride=2)
-      #conv1 = BatchNorm(name=scope.name)(conv1, training=False)
-      #conv1 = tf.layers.batch_normalization(conv1)
-      #conv1 = tf.nn.relu( conv1, name=scope.name)
+    with tf.variable_scope('conv01') as scope:
+      conv1 = conv_layer( scope.name, layers[-1], [7, 7, inpt.get_shape()[-1], out_channels], stride=2)
       layers.append(conv1)
 
-    with tf.variable_scope('pool0') as scope:
+    with tf.variable_scope('pool01') as scope:
       filter_ = [1,3,3,1]
       stride_ = [1,2,2,1]
       print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
       pool0 = tf.nn.max_pool(layers[-1], ksize=filter_, strides=stride_, padding='SAME')
-      #pool0 = tf.layers.BatchNormalization(pool0)
+      layers.append(pool0)
+      print("*****",scope.name,"**pool0**",pool0.get_shape())
+    
+    in_channels = out_channels 
+    out_channels = 128 
+    with tf.variable_scope('conv02') as scope:
+      conv1 = conv_layer( scope.name, layers[-1], [3, 3, in_channels, out_channels], stride=1)
+      layers.append(conv1)
+
+    with tf.variable_scope('pool02') as scope:
+      filter_ = [1,3,3,1]
+      stride_ = [1,2,2,1]
+      print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
+      pool0 = tf.nn.max_pool(layers[-1], ksize=filter_, strides=stride_, padding='SAME')
       layers.append(pool0)
       print("*****",scope.name,"**pool0**",pool0.get_shape())
     #'''
@@ -317,21 +721,14 @@ def resnet(inpt, n, is_training=True):
       for j in range (num_conv):
         with tf.variable_scope('res%d_%d' % (i+1,j+1)) as scope:
             out_channels = in_channels * channels_increase_factor
-            conv2 = residual_block( scope.name + 'a', layers[-1], [in_channels,in_channels,out_channels], kernel=3, stride=2, projection=True)
+            conv2 = residual_block( scope.name + 'a', layers[-1], [in_channels,in_channels,out_channels], down_sample=False, kernel=3, stride=2, projection=True)
             layers.append(conv2)
-            #in_channels = out_channels 
-            #out_channels = in_channels * 4
-            conv2 = residual_block( scope.name + 'b', conv2, [in_channels,in_channels,out_channels], kernel=3, stride=1, projection=False)
+            conv2 = residual_block( scope.name + 'b', conv2, [in_channels,in_channels,out_channels], down_sample=False, kernel=3, stride=1, projection=False)
             layers.append(conv2)
-            conv2 = residual_block( scope.name + 'c', conv2, [in_channels,in_channels,out_channels], kernel=3, stride=1, projection=False)
-            #conv2 = residual_block(scope.name + '-2',conv2_x, out_channels, False)
+            conv2 = residual_block( scope.name + 'c', conv2, [in_channels,in_channels,out_channels], down_sample=False, kernel=3, stride=1, projection=False)
             layers.append(conv2)
             in_channels = out_channels 
 
-        #assert conv2.get_shape().as_list()[1:] == [32, 32, 16]
-     
-   
-    #assert conv4.get_shape().as_list()[1:] == [8, 8, 64]
     with tf.variable_scope('flatten') as scope:
         out = tf.layers.flatten( layers[-1], name=scope.name)
         layers.append(out)
@@ -347,7 +744,7 @@ def resnet(inpt, n, is_training=True):
       with tf.variable_scope('fc_' + str(i+1)) as scope:
         #out = KL.Dense( units=out_fc_units, activation='relu', name=scope.name)( inputs=layers[-1])
         out = tf.layers.dense( inputs=layers[-1], units=out_fc_units, activation='relu', use_bias=True, kernel_initializer=tf.uniform_unit_scaling_initializer(factor=1.0), bias_initializer=tf.constant_initializer(), name=scope.name)
-        out = tf.layers.dropout( inputs=out, rate=0.2, seed=101, training=is_training)
+        out = tf.layers.dropout( inputs=out, rate=0.5, seed=101, training=is_training)
         #out = KL.Dense( inputs=layers[-1], units=out_fc_units, activation='relu', name=scope.name)
         #out = BatchNorm(name=scope.name)(out, training=False)
         layers.append(out)
@@ -363,140 +760,6 @@ def resnet(inpt, n, is_training=True):
      
     return layers[-1]
 
-
-def inference1(images):
-  """Build the CIFAR-10 model.
-
-  Args:
-    images: Images returned from distorted_inputs() or inputs().
-
-  Returns:
-    Logits.
-  """
-  # We instantiate all variables using tf.get_variable() instead of
-  # tf.Variable() in order to share variables across multiple GPU training runs.
-  # If we only ran this model on a single GPU, we could simplify this function
-  # by replacing all instances of tf.get_variable() with tf.Variable().
-  #
-  # conv1
-  print("images","**************",images.get_shape())
-  with tf.variable_scope('conv1') as scope:
-    kernel = _variable_with_weight_decay('weights',
-                                         shape=[3, 3, 1, 16],
-                                         stddev=5e-2,
-                                         wd=None)
-    conv = tf.nn.conv2d(images, kernel, [1, 1, 1, 1], padding='SAME')
-    biases = _variable_on_cpu('biases', [16], tf.constant_initializer(0.0))
-    pre_activation = tf.nn.bias_add(conv, biases)
-    conv1 = tf.nn.relu(pre_activation, name=scope.name)
-    _activation_summary(conv1)
-    '''
-    conv1 = tf.layers.conv2d( images, 64, 5, activation=tf.nn.relu)
-  pool1 = tf.layers.max_pooling2d( conv1, pool_size = 3, strides=2, padding='same',name='pool1')
-  '''
-  print("conv1","**************",conv1.get_shape())
-  # pool1
-  pool1 = tf.nn.max_pool(conv1, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1],
-                         padding='SAME', name='pool1')
-  print("pool1","**************",pool1.get_shape())
-  # norm1
-  norm1 = tf.nn.lrn(pool1, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75,
-                    name='norm1')
-   
-  # conv2
-  with tf.variable_scope('conv2') as scope:
-    kernel = _variable_with_weight_decay('weights',
-                                         shape=[3, 3, 16, 16],
-                                         stddev=5e-2,
-                                         wd=None)
-    conv = tf.nn.conv2d(norm1, kernel, [1, 1, 1, 1], padding='SAME')
-    biases = _variable_on_cpu('biases', [16], tf.constant_initializer(0.1))
-    pre_activation = tf.nn.bias_add(conv, biases)
-    conv2 = tf.nn.relu(pre_activation, name=scope.name)
-    _activation_summary(conv2)
-  print("conv2","**************",conv2.get_shape())
-   
-  # norm2
-  norm2 = tf.nn.lrn(conv2, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75,
-                    name='norm2')
-  # pool2
-  pool2 = tf.nn.max_pool(norm2, ksize=[1, 3, 3, 1],
-                         strides=[1, 2, 2, 1], padding='SAME', name='pool2')
-  '''
-    conv2 = tf.layers.conv2d( pool1, 64, 3, activation=tf.nn.relu)
-  pool2 = tf.layers.max_pooling2d( conv2, pool_size = 3, strides=2, padding='same',name='pool2')
-  '''
-  print("pool2","**************",pool2.get_shape())
-   
-  # local3
-  with tf.variable_scope('local3') as scope:
-    # Move everything into depth so we can perform a single matrix multiply.
-    '''
-    reshape = tf.reshape(pool2, [images.get_shape().as_list()[0], -1])
-    reshape = tf.reshape(pool2, [FLAGS.batch_size,-1])
-    print("local3.reshape","**************",reshape.get_shape())
-    '''
-    local3 = tf.contrib.layers.flatten(pool2)
-    print("local3 flatened","**************",local3.get_shape())
-    dim = local3.get_shape()[1].value
-    weights = _variable_with_weight_decay('weights', shape=[dim, 256],
-                                          stddev=0.04, wd=0.004)
-    biases = _variable_on_cpu('biases', [256], tf.constant_initializer(0.1))
-    local3 = tf.nn.relu(tf.matmul(local3, weights) + biases, name=scope.name)
-    _activation_summary(local3)
-    '''
-    dim = local3.get_shape()[1].value
-    local3 = tf.layers.dense(inputs=local3,units=512,activation=tf.nn.relu,
-                               use_bias=True, 
-                               bias_initializer=_variable_on_cpu('biases',[512],
-                                   tf.constant_initializer(0.1)),
-                               kernel_initializer = _variable_with_weight_decay('weights', 
-                                          shape=[dim, 512],
-                                          stddev=0.04, wd=0.004)
-                              )
-    '''
-    print("local3","**************",local3.get_shape())
-
-  # local4
-  with tf.variable_scope('local4') as scope:
-    weights = _variable_with_weight_decay('weights', shape=[256, 256],
-                                          stddev=0.04, wd=0.004)
-    biases = _variable_on_cpu('biases', [256], tf.constant_initializer(0.1))
-    local4 = tf.nn.relu(tf.matmul(local3, weights) + biases, name=scope.name)
-    print("local4","**************",local4.get_shape())
-    _activation_summary(local4)
-    '''
-    local4 = tf.layers.dense(inputs=local3,units=512,activation=tf.nn.relu,
-                               use_bias=True, 
-                               bias_initializer=_variable_on_cpu('biases',[512],
-                                   tf.constant_initializer(0.1)),
-                               kernel_initializer = _variable_with_weight_decay('weights', 
-                                          shape=[512, 512],
-                                          stddev=0.04, wd=0.004)
-                              )
-    '''
-    print("local4","**************",local4.get_shape())
-
-  # linear layer(WX + b),
-  # We don't apply softmax here because
-  # tf.nn.sparse_softmax_cross_entropy_with_logits accepts the unscaled logits
-  # and performs the softmax internally for efficiency.
-  with tf.variable_scope('softmax_linear') as scope:
-    weights = _variable_with_weight_decay('weights', [256, NUM_CLASSES],
-                                          stddev=1/256.0, wd=None)
-    biases = _variable_on_cpu('biases', [NUM_CLASSES],
-                              tf.constant_initializer(0.0))
-    softmax_linear = tf.add(tf.matmul(local4, weights), biases, name=scope.name)
-    print("softmax","**************",softmax_linear.get_shape())
-    _activation_summary(softmax_linear)
-    '''
-    softmax_linear = tf.layers.dense(local4,NUM_CLASSES)
-    '''
-    print("softmax_linear","**************",softmax_linear.get_shape())
-
-  return softmax_linear
-
-
 def loss(logits, labels, loss_type='losses'):
   """Add L2Loss to all the trainable variables.
 
@@ -511,8 +774,8 @@ def loss(logits, labels, loss_type='losses'):
   """
   # Calculate the average cross entropy loss across the batch.
   labels = tf.cast(labels, tf.int64)
-  print("labels","================",labels.get_shape())
-  print("logits","================",logits.get_shape())
+  print("labels ================",labels.get_shape())
+  print("logits ================",logits.get_shape())
   #cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
   cross_entropy = tf.nn.softmax_cross_entropy_with_logits_v2(
       labels=labels, logits=logits, name='cross_entropy_per_example')
@@ -520,13 +783,10 @@ def loss(logits, labels, loss_type='losses'):
   cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
   print("cross_entropy_mean","================",cross_entropy_mean.get_shape())
    
-  tf.add_to_collection( loss_type, cross_entropy_mean)
-   
-  #test_probs = tf.reduce_max(logits,1)
-  #_, test_accu = tf.metrics.accuracy(labels=tf.argmax(labels,1),predictions=tf.argmax(logits,1))
   if loss_type != 'losses':
+    tf.add_to_collection( loss_type, cross_entropy_mean)
     _, test_accu = tf.metrics.accuracy(labels=tf.argmax(labels,1),
-                                       predictions=tf.argmax(logits,1))
+                                           predictions=tf.argmax(logits,1))
     preds = tf.argmax( logits, 1)
     probs = tf.reduce_max( logits, 1)
     tf.add_to_collection( 'test_accuracy', test_accu)
@@ -535,6 +795,7 @@ def loss(logits, labels, loss_type='losses'):
      
     return preds, probs
   else:
+    tf.add_to_collection( loss_type, cross_entropy_mean)
      
     return tf.add_n(tf.get_collection(loss_type), name='total_' + loss_type)
 

@@ -55,10 +55,10 @@ import utils.data_util as du
 
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_string('train_dir', '/data1/data/models',
+tf.app.flags.DEFINE_string('train_dir', '/disk1/data1/data/models/inception',
                            """Directory where to write event logs """
                            """and checkpoint.""")
-tf.app.flags.DEFINE_integer('max_steps', 225000,
+tf.app.flags.DEFINE_integer('max_steps', 20000,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_integer('num_gpus', 2,
                             """How many GPUs to use.""")
@@ -68,11 +68,10 @@ tf.app.flags.DEFINE_string('eval_dir', '/tmp/cifar10_eval',
                            """Directory where to write event logs.""")
 tf.app.flags.DEFINE_string('eval_data', 'test',
                            """Either 'test' or 'train_eval'.""")
-tf.app.flags.DEFINE_string('checkpoint_dir', '/data1/data/models',
+tf.app.flags.DEFINE_string('checkpoint_dir', '/disk1/data1/data/models/inception',
                            """Directory where to read model checkpoints.""")
 
-
-def tower_loss(scope, images, labels, loss_type='losses'):
+def tower_loss( scope, images, labels, loss_type='losses', image_ids=None):
   """Calculate the total loss on a single tower running the CIFAR model.
 
   Args:
@@ -89,8 +88,9 @@ def tower_loss(scope, images, labels, loss_type='losses'):
   is_training = True 
   if loss_type != 'losses':
     is_training = False
-  logits = cifar10.resnet(inpt=images,n=44,is_training=is_training)
-  #print("logits ############",logits.get_shape())
+  #logits = cifar10.resnet(inpt=images,n=44,is_training=is_training)
+  logits = cifar10.inception(inpt=images,is_training=is_training)
+  print("logits ############",logits.get_shape())
 
   # Build the portion of the Graph calculating the losses. Note that we will
   # assemble the total_loss using a custom function below.
@@ -98,18 +98,20 @@ def tower_loss(scope, images, labels, loss_type='losses'):
     preds, probs = cifar10.loss(logits, labels, loss_type)
   else:
     _ = cifar10.loss(logits, labels, loss_type)
-  #print("After loss....")
+  print("After loss....")
 
   # Assemble all of the losses for the current tower only.
   losses = tf.get_collection( loss_type, scope)
   #losses = tf.get_collection('losses')
-  #print("losses len ############",len(losses))
+  print("losses len ############",len(losses))
 
   # Calculate the total loss for the current tower.
   total_loss = tf.add_n(losses, name='total_' + loss_type)
-  #print("total_loss ############",total_loss.get_shape())
+  print("total_loss ############",total_loss.get_shape())
   
   if loss_type != 'losses':
+    if image_ids is not None:
+      tf.add_to_collection( 'image_ids', image_ids)
     accuracies = tf.get_collection( 'test_accuracy', scope)
     mean_accuracy = tf.reduce_mean( accuracies)
      
@@ -122,7 +124,7 @@ def tower_loss(scope, images, labels, loss_type='losses'):
       # Remove 'tower_[0-9]/' from the name in case this is a multi-GPU training
       # session. This helps the clarity of presentation on tensorboard.
       loss_name = re.sub('%s_[0-9]*/' % cifar10.TOWER_NAME, '', l.op.name)
-      #print("loss_name - ",loss_name)
+      print("loss_name - ",loss_name)
       tf.summary.scalar(loss_name, l)
 
     return total_loss, None
@@ -248,16 +250,16 @@ def train(model_name='mymodel.ckpt'):
             grads = opt.compute_gradients(loss)
              
             #validation/Test set 
-            loss_type = 'test_losses'
             _, test_image_batch, test_label_batch = _test_iterator.get_next()
-            test_loss, test_accu, _, _ = tower_loss(scope, test_image_batch, test_label_batch, loss_type)
-            '''
+            _, test_accu, _, _ = tower_loss(scope, test_image_batch, test_label_batch, loss_type='test_losses')
+            
+            #below code prints gradiants from the networks.
+            #'''
             print("grads ############# len ",len(grads))
             for i,grad in enumerate(grads):
               for j,g in enumerate(grad):
                 print(i,j,"grad +++",g)
-            print("grads #############",grads.get_shape())
-            '''
+            #'''
              
             # Keep track of the gradients across all towers.
             if grads is None:
@@ -272,8 +274,10 @@ def train(model_name='mymodel.ckpt'):
     # Add a summary to track the learning rate.
     summaries.append(tf.summary.scalar('learning_rate', lr))
     summaries.append(tf.summary.scalar('tower_loss', loss))
+    #for i,test_accu in enumerate(test_accus):
+    #  summaries.append(tf.summary.scalar('test_accu' + str(i), test_accu))
     summaries.append(tf.summary.scalar('test_accu', test_accu))
-    summaries.append(tf.summary.scalar('test_loss', test_loss))
+    #summaries.append(tf.summary.scalar('test_loss', test_loss))
 
     # Add histograms for gradients.
     for grad, var in grads:
@@ -328,18 +332,33 @@ def train(model_name='mymodel.ckpt'):
 
       assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
 
-      #if step % 10 == 0:
-      if step % 100 == 0:
-        test_accu_value, test_loss_value = sess.run([test_accu, test_loss])
+      if step % 10 == 0:
+        test_accu_value = sess.run(test_accu)
         num_examples_per_step = FLAGS.batch_size * FLAGS.num_gpus
         examples_per_sec = num_examples_per_step / duration
         sec_per_batch = duration / FLAGS.num_gpus
-
+        
+        #print("*******test_accu[%s]*******" % (test_accu_value)) 
         format_str = ('%s: step %d, loss=%.2f (%.1f examples/sec; %.3f '
-                      'sec/batch) test loss[%.4f] test accu[%.2f]')
+                      'sec/batch)  test accu[%.2f]')
         print (format_str % (datetime.now(), step, loss_value,
                              examples_per_sec, sec_per_batch, 
-                             test_loss_value, test_accu_value))
+                             test_accu_value))
+         
+        ''' 
+        if type(test_accu_value) is list: 
+          format_str = ('%s: step %d, loss=%.2f (%.1f examples/sec; %.3f '
+                      'sec/batch)  accu0[%.2f] accu1[%.2f] accu2[%.2f]')
+          print (format_str % (datetime.now(), step, loss_value,
+                             examples_per_sec, sec_per_batch, 
+                             test_accu_value[0],test_accu_value[1],test_accu_value[2]))
+        else: 
+          format_str = ('%s: step %d, loss=%.2f (%.1f examples/sec; %.3f '
+                      'sec/batch)  test accu[%.2f]')
+          print (format_str % (datetime.now(), step, loss_value,
+                             examples_per_sec, sec_per_batch, 
+                             test_accu_value))
+        ''' 
 
       if step % 100 == 0:
         summary_str = sess.run(summary_op)
@@ -377,11 +396,11 @@ def test(model_name,test_examples):
             #validation/Test set 
             loss_type = 'test_losses'
             test_image_ids, test_image_batch, test_label_batch = _test_iterator.get_next()
-            test_loss, test_accu, test_preds, test_probs = tower_loss(scope, test_image_batch, test_label_batch, loss_type)
+            _, test_accu, test_preds, test_probs = tower_loss(scope, test_image_batch, test_label_batch, loss_type, test_image_ids)
     # Build the summary operation based on the TF collection of Summaries.
     #summary_writer = tf.summary.FileWriter(FLAGS.eval_dir, g)
     summaries.append(tf.summary.scalar('test_accu', test_accu))
-    summaries.append(tf.summary.scalar('test_loss', test_loss))
+    #summaries.append(tf.summary.scalar('test_loss', test_loss))
 
     # Build the summary operation from the last tower summaries.
     summary_op = tf.summary.merge_all()
@@ -439,7 +458,7 @@ def test(model_name,test_examples):
      
     for step in xrange(test_examples):
       start_time = time.time()
-      test_accu_value, test_loss_value, test_image_ids_value, test_label_value, test_preds_value, test_probs_value = sess.run([test_accu, test_loss, test_image_ids, test_label_batch, test_preds, test_probs])
+      test_accu_value, test_image_ids_value, test_label_value, test_preds_value, test_probs_value = sess.run([test_accu, test_image_ids, test_label_batch, test_preds, test_probs])
       a_image_ids.append(test_image_ids_value)
       a_preds.append(test_preds_value)
       a_labels.append(test_label_value)
@@ -449,10 +468,10 @@ def test(model_name,test_examples):
       #assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
        
       if step % 10 == 0:
-        format_str = ('%s: step %d, loss=%.2f '
+        format_str = ('%s: step %d, '
                       'test accuracy[%.2f]')
         print (format_str % (datetime.now(), step,
-                             test_loss_value, test_accu_value))
+                              test_accu_value))
        
       if step % 100 == 0:
         summary_str = sess.run(summary_op)
@@ -483,18 +502,23 @@ def print_groups(i_file,g_count_key='prob',g_keys=['label','pred'],g_sort_keys=[
 
 def main(argv=None):  # pylint: disable=unused-argument
   mode = 'test'
+  steps = '499'
+   
   model_name = 'res_d32_c32.cpkt'
   #model_name = 'res_d44_c64_f7_p5_lr01_fc1024.cpkt-499'
   #model_name = 'dr1_res_d44_c64_f5_p5_lr01_fc1024.cpkt'
   #model_name = 'dr1_res_d44_c64_f5_p5_lr01_fc1024.cpkt-99'
   #model_name = 'res_d44_c64_f5_p5_lr01_fc1024.cpkt-499'
   #model_name = 'res_d44_c64_f3_p3_lr01_fc1024.cpkt-499'
-  model_name = 'res_d44_c64_f5_p3_lr01.cpkt'
+  
+  model_name = 'incep_basic_lr01.cpkt'
+   
   #cifar10.maybe_download_and_extract()
   if len(argv) > 0:
     print("arguments passed",argv[:])
     print("Running mode - [%s]" % argv[1])
     mode = argv[1]
+    steps = argv[2]
   #print_groups(i_file='/tmp/cifar10_train/test_out_df.csv')
   #'''
   if mode == 'train':
@@ -504,6 +528,7 @@ def main(argv=None):  # pylint: disable=unused-argument
     train(model_name)
     #test(model_name,test_examples=100)
   else:
+    model_name = model_name + '-' + steps
     if tf.gfile.Exists(FLAGS.eval_dir):
       tf.gfile.DeleteRecursively(FLAGS.eval_dir)
     tf.gfile.MakeDirs(FLAGS.eval_dir)
