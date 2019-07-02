@@ -55,10 +55,10 @@ import utils.data_util as du
 
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_string('train_dir', '/disk1/data1/data/models',
+tf.app.flags.DEFINE_string('train_dir', '/disk1/data1/data/models/inception',
                            """Directory where to write event logs """
                            """and checkpoint.""")
-tf.app.flags.DEFINE_integer('max_steps', 500,
+tf.app.flags.DEFINE_integer('max_steps', 20000,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_integer('num_gpus', 2,
                             """How many GPUs to use.""")
@@ -68,10 +68,10 @@ tf.app.flags.DEFINE_string('eval_dir', '/tmp/cifar10_eval',
                            """Directory where to write event logs.""")
 tf.app.flags.DEFINE_string('eval_data', 'test',
                            """Either 'test' or 'train_eval'.""")
-tf.app.flags.DEFINE_string('checkpoint_dir', '/disk1/data1/data/models',
+tf.app.flags.DEFINE_string('checkpoint_dir', '/disk1/data1/data/models/inception',
                            """Directory where to read model checkpoints.""")
 
-def tower_loss(scope, images, labels, loss_type='losses'):
+def tower_loss( scope, images, labels, loss_type='losses', image_ids=None):
   """Calculate the total loss on a single tower running the CIFAR model.
 
   Args:
@@ -110,6 +110,8 @@ def tower_loss(scope, images, labels, loss_type='losses'):
   print("total_loss ############",total_loss.get_shape())
   
   if loss_type != 'losses':
+    if image_ids is not None:
+      tf.add_to_collection( 'image_ids', image_ids)
     accuracies = tf.get_collection( 'test_accuracy', scope)
     mean_accuracy = tf.reduce_mean( accuracies)
      
@@ -394,7 +396,7 @@ def test(model_name,test_examples):
             #validation/Test set 
             loss_type = 'test_losses'
             test_image_ids, test_image_batch, test_label_batch = _test_iterator.get_next()
-            _, test_accu, test_preds, test_probs = tower_loss(scope, test_image_batch, test_label_batch, loss_type)
+            _, test_accu, test_preds, test_probs = tower_loss(scope, test_image_batch, test_label_batch, loss_type, test_image_ids)
     # Build the summary operation based on the TF collection of Summaries.
     #summary_writer = tf.summary.FileWriter(FLAGS.eval_dir, g)
     summaries.append(tf.summary.scalar('test_accu', test_accu))
@@ -500,6 +502,8 @@ def print_groups(i_file,g_count_key='prob',g_keys=['label','pred'],g_sort_keys=[
 
 def main(argv=None):  # pylint: disable=unused-argument
   mode = 'test'
+  steps = '499'
+   
   model_name = 'res_d32_c32.cpkt'
   #model_name = 'res_d44_c64_f7_p5_lr01_fc1024.cpkt-499'
   #model_name = 'dr1_res_d44_c64_f5_p5_lr01_fc1024.cpkt'
@@ -514,6 +518,7 @@ def main(argv=None):  # pylint: disable=unused-argument
     print("arguments passed",argv[:])
     print("Running mode - [%s]" % argv[1])
     mode = argv[1]
+    steps = argv[2]
   #print_groups(i_file='/tmp/cifar10_train/test_out_df.csv')
   #'''
   if mode == 'train':
@@ -523,6 +528,7 @@ def main(argv=None):  # pylint: disable=unused-argument
     train(model_name)
     #test(model_name,test_examples=100)
   else:
+    model_name = model_name + '-' + steps
     if tf.gfile.Exists(FLAGS.eval_dir):
       tf.gfile.DeleteRecursively(FLAGS.eval_dir)
     tf.gfile.MakeDirs(FLAGS.eval_dir)

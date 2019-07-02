@@ -43,7 +43,7 @@ import tarfile
 import numpy as np
 from six.moves import urllib
 import tensorflow as tf
-import keras.layers as KL
+import tensorflow.keras.layers as KL
 
 import cifar10_input
 
@@ -71,7 +71,7 @@ MOVING_AVERAGE_DECAY = 0.9999     # The decay to use for the moving average.
 NUM_EPOCHS_PER_DECAY = 5.0      # Epochs after which learning rate decays.
 LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
 #INITIAL_LEARNING_RATE = 0.0065   # Initial learning rate.
-INITIAL_LEARNING_RATE = 0.01   # Initial learning rate.
+INITIAL_LEARNING_RATE = 0.1   # Initial learning rate.
 
 # If a model is trained with multiple GPUs, prefix all Op names with tower_name
 # to differentiate the operations. Note that this prefix is removed from the
@@ -315,11 +315,12 @@ def inception(inpt, is_training=True):
     layers1 = []
    
     enable_pooling = True
-    out_channels = 64
     channels_increase_factor = 2
     layers.append(inpt) 
     print("**inpt**",inpt.get_shape(),"***")
-     
+    
+    ''' 
+    out_channels = 64
     with tf.variable_scope('1a') as scope:
       out = conv_layer( scope.name, layers[-1], [7, 7, inpt.get_shape()[-1], out_channels], stride=2)
       layers.append(out)
@@ -330,7 +331,18 @@ def inception(inpt, is_training=True):
       layers.append(out)
       print("*****",scope.name,"**out**",out.get_shape())
      
-    out_channels = 192
+    out_channels = 128
+    with tf.variable_scope('1b') as scope:
+      out = conv_layer( scope.name, layers[-1], [5, 5, layers[-1].get_shape()[-1], out_channels], stride=1)
+      layers.append(out)
+      filter_ = [1,3,3,1]
+      stride_ = [1,2,2,1]
+      print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
+      out = maxpool_layer(layers[-1], filter_, stride_, padding_='SAME')
+      layers.append(out)
+      print("*****",scope.name,"**out**",out.get_shape())
+     
+    out_channels = 256
     with tf.variable_scope('2a') as scope:
       out = conv_layer( scope.name, layers[-1], [3, 3, layers[-1].get_shape()[-1], out_channels], stride=1)
       layers.append(out)
@@ -340,6 +352,28 @@ def inception(inpt, is_training=True):
       out = maxpool_layer(layers[-1], filter_, stride_, padding_='SAME')
       layers.append(out)
       print("*****",scope.name,"**out**",out.get_shape())
+    ''' 
+     
+    #Layer 1a out channels=256 
+    #out_channel_1x1, reduce_channel_3x3, out_channel_3x3, reduce_channel_5x5, out_channel_5x5, pool_proj = output_depths
+    output_channels = [8,16,16,16,16,8] 
+    with tf.variable_scope('1a') as scope:
+      out = inception_block( scope.name, 
+                             inpt=layers[-1], 
+			     output_depths=output_channels,
+                             conv_filters=[3,5], 
+                             conv_strides=[1,1], 
+                             pool_filter=5, 
+                             pool_stride=1)
+      layers.append(out)
+     
+    #Max pool layer 
+    with tf.variable_scope('maxpool1a') as scope:
+      filter_ = [1,3,3,1]
+      stride_ = [1,2,2,1]
+      print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
+      out = maxpool_layer(layers[-1], filter_, stride_, padding_='SAME')
+      layers.append(out)
      
     #Layer 3a out channels=256 
     #out_channel_1x1, reduce_channel_3x3, out_channel_3x3, reduce_channel_5x5, out_channel_5x5, pool_proj = output_depths
@@ -354,6 +388,15 @@ def inception(inpt, is_training=True):
                              pool_stride=1)
       layers.append(out)
      
+    #Max pool layer 
+    with tf.variable_scope('maxpool3a') as scope:
+      filter_ = [1,3,3,1]
+      stride_ = [1,2,2,1]
+      print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
+      out = maxpool_layer(layers[-1], filter_, stride_, padding_='SAME')
+      layers.append(out)
+     
+    #Layer 4a out channels=512 
     #Layer 3b out channels=480 
     output_channels = [128,128,192,32,96,64] 
     with tf.variable_scope('3b') as scope:
@@ -367,7 +410,7 @@ def inception(inpt, is_training=True):
       layers.append(out)
      
     #Max pool layer 
-    with tf.variable_scope('maxpool1') as scope:
+    with tf.variable_scope('maxpool3b') as scope:
       filter_ = [1,3,3,1]
       stride_ = [1,2,2,1]
       print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
@@ -386,6 +429,15 @@ def inception(inpt, is_training=True):
                              pool_stride=1)
       layers.append(out)
      
+    #Max pool layer 
+    with tf.variable_scope('maxpool4a') as scope:
+      filter_ = [1,3,3,1]
+      stride_ = [1,2,2,1]
+      print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
+      out = maxpool_layer(layers[-1], filter_, stride_, padding_='SAME')
+      layers.append(out)
+     
+    #Layer 3a out channels=256 
     ''' 
     #*******************first output dump start********************************* 
     #out1 - First intermeiate output 
@@ -396,6 +448,7 @@ def inception(inpt, is_training=True):
       stride_ = [1,1,1,1]
       print("*****",scope.name,"**avgpool layer**",layers1[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
       out1 = avgpool_layer(layers1[-1], filter_, stride_, padding_='SAME')
+      out1 = GlobalAveragePooling2D(name='avg_pool_5_3x3/1')(x)
       layers1.append(out1)
      
     #flatten
@@ -460,6 +513,15 @@ def inception(inpt, is_training=True):
                              pool_stride=1)
       layers.append(out)
      
+    #Max pool layer 
+    with tf.variable_scope('maxpool4c') as scope:
+      filter_ = [1,3,3,1]
+      stride_ = [1,2,2,1]
+      print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
+      out = maxpool_layer(layers[-1], filter_, stride_, padding_='SAME')
+      layers.append(out)
+     
+    #Layer 4c out channels=512 
     #Layer 4d out channels=528 
     output_channels = [112,144,288,32,64,64] 
     with tf.variable_scope('4d') as scope:
@@ -565,6 +627,12 @@ def inception(inpt, is_training=True):
                              pool_stride=1)
       layers.append(out)
      
+    out = KL.GlobalAveragePooling2D(name='GlobalAvgPool_5b')(layers[-1])
+    layers.append(out)
+    out = tf.layers.dropout( inputs=out, rate=0.5, seed=101, training=is_training)
+    layers.append(out)
+    
+    '''
     #Final Average pool layer 
     with tf.variable_scope('avgpool1') as scope:
       filter_ = [1,7,7,1]
@@ -591,6 +659,7 @@ def inception(inpt, is_training=True):
         out = tf.layers.dropout( inputs=out, rate=0.5, seed=101, training=is_training)
         layers.append(out)
         print("*****",scope.name,out.get_shape())
+    '''
      
     #Final Softmax Layer
     with tf.variable_scope('final') as scope:
