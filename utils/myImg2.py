@@ -2,11 +2,13 @@
 import sys, getopt
 
 import numpy as np
-from scipy import misc
+#from scipy import misc
+import cv2 as misc
 import math
 import re
 import os.path
 import matplotlib.pyplot as plt
+from mpl_toolkits import mplot3d
 
 #from matplotlib import pyplot as plt
 from skimage import util
@@ -117,15 +119,25 @@ class myImg(object):
       if y0 < 0:
         y0 = 0 
 
-      px = self.img[x0:(x0+w),y0:(y0+h),:]
+      print(self.img.shape)
+      if len(self.img.shape) > 2:
+        px = self.img[x0:(x0+w),y0:(y0+h),:]
+      else:
+        px = self.img[x0:(x0+w),y0:(y0+h)]
       #print('px - ' + px)
-      print(px.shape)
-      np.savetxt('/tmp/px0.csv', px[:,:,0], fmt='%03d')
-      np.savetxt('/tmp/px1.csv', px[:,:,1], fmt='%03d')
-      np.savetxt('/tmp/px2.csv', px[:,:,2], fmt='%03d')
+      #print(px.shape)
+      px_patch = px
+     
+       
+      if len(self.img.shape) > 2:
+        np.savetxt('/tmp/px0.csv', px[:,:,0], fmt='%03d')
+        np.savetxt('/tmp/px1.csv', px[:,:,1], fmt='%03d')
+        np.savetxt('/tmp/px2.csv', px[:,:,2], fmt='%03d')
+      else:
+        np.savetxt('/tmp/px0.csv', px, fmt='%03d')
       px = px.astype('float32')
       #print(px)
-      #px /= 255.0
+      px /= 255.0
       #print(px)
       '''
       for i in range(3):
@@ -136,12 +148,18 @@ class myImg(object):
       '''
       px -= np.mean(px)
       px /= np.std(px)
-      np.savetxt('/tmp/pxm0.csv', px[:,:,0], fmt='%0.3f')
-      np.savetxt('/tmp/pxm1.csv', px[:,:,1], fmt='%0.3f')
-      np.savetxt('/tmp/pxm2.csv', px[:,:,2], fmt='%0.3f')
+      self.draw_3d_plot(px_patch=px)
+      if len(self.img.shape) > 2:
+        np.savetxt('/tmp/pxm0.csv', px[:,:,0], fmt='%0.3f')
+        np.savetxt('/tmp/pxm1.csv', px[:,:,1], fmt='%0.3f')
+        np.savetxt('/tmp/pxm2.csv', px[:,:,2], fmt='%0.3f')
+      else:
+        np.savetxt('/tmp/pxm0.csv', px, fmt='%0.3f')
       px = np.around( px, decimals=3)
       #print(px)
       #print(self.img.item((x,y,1)))
+     
+      return px_patch
 
    def addRandNoise(self):
       mname = 'addRandNoise'
@@ -166,17 +184,20 @@ class myImg(object):
       #self.logger.log('----------------------------------------------------')
 
    def getGreyScaleImage2(self,convertFlag = False):
+      red = .3
+      blue = .1
+      green = .6
       if self.channels == 3:
         if convertFlag:
           #self.img = np.average( self.img, axis=2)
-          self.img = self.img[:,:,0] * .2989 + self.img[:,:,1] * .5870 + self.img[:,:,2] * .1140
+          self.img = self.img[:,:,0] * red + self.img[:,:,1] * blue + self.img[:,:,2] * green
           self.setImageMetadata()
            
           return self.img
         else:
            
           #return np.average( self.img, axis=2)
-          return self.img[:,:,0] * .2989 + self.img[:,:,1] * .5870 + self.img[:,:,2] * .1140
+          return self.img[:,:,0] * red + self.img[:,:,1] * blue + self.img[:,:,2] * green
       else:
         #for existing single channel system, return img as is 
         return self.img
@@ -240,34 +261,57 @@ class myImg(object):
        
       return True   
     
-   def showImageAndHistogram(self):
+   def showImageAndHistogram(self,imagekeys=None,img_arr=None):
       #prepare keys for iterating all dictionary images.
-      imagekeys = self.imgdict.keys()
+      patch = False
+      if imagekeys is None:
+        imagekeys = self.imgdict.keys()
+      if img_arr is None: #check if print patch of image
+        img_arr = self.img
+      else:
+        patch = True
       #Create subplot to accomodate all images and historgram
       #uncomment to see plt graphs
       fig, axes = plt.subplots(nrows=len(imagekeys)+1,ncols=2) #init subplot 
       ax = axes.ravel()
        
       #put source or original image to display
-      ax[0].imshow(self.img)
+      ax[0].imshow(img_arr)
       ax[0].set_title(self.id)
       #put histogram to display
-      ax[1].hist(self.img.ravel(),256,[0,256])
+      ax[1].hist(img_arr.ravel(),256,[0,256])
       ax[1].set_title('Histogram')
        
       #iterate dictionary
       for i,imagekey in enumerate(imagekeys):
         #put image to display
-        ax[i+2].imshow(self.imgdict.get(imagekey,None))
+        print("i[%s] imagekey[%s]" % (i,imagekey))
+        '''
+        if patch:
+          ax[i+2].imshow(img_arr)
+        else:
+          ax[i+2].imshow(self.imgdict.get(imagekey,None))
         ax[i+2].set_title(imagekey)
         #put histogram to display
-        ax[i+3].hist(self.img.ravel(),256,[0,256])
+        ax[i+3].hist(img_arr.ravel(),256,[0,256])
         ax[i+3].set_title(imagekey + ' Histogram')
+        '''
+        #put source or original image to display
+        fig, axes = plt.subplots(nrows=1,ncols=2) #init subplot 
+        ax = axes.ravel()
+        temp_img_arr = self.imgdict.get(imagekey,None)
+        ax[0].imshow(temp_img_arr)
+        ax[0].set_title( imagekey + self.id)
+        #put histogram to display
+        ax[1].hist(temp_img_arr.ravel(),256,[0,256])
+        ax[1].set_title(imagekey + 'Histogram')
+        plt.tight_layout()
+        plt.show()
       
-      #plt.hist(self.img.ravel(),256,[0,256]); 
+      #plt.hist(img_arr.ravel(),256,[0,256]); 
       #uncomment to see plt graphs
-      #plt.tight_layout()
-      #plt.show()
+      plt.tight_layout()
+      plt.show()
    
    def getImageByKey(self,imagekey):
       return self.imgdict[imagekey]
@@ -495,6 +539,53 @@ class myImg(object):
        
       return y + int(5 * image_scale)  
 
+   def plot_3d( self, Z, w=None, h=None, title='surface'):
+     if w is None:
+       x = np.linspace( 0, self.width, self.width)
+     else:
+       x = np.linspace( 0, w, w)
+     if h is None:
+       y = np.linspace( 0, self.height, self.height)
+     else:
+       y = np.linspace( 0, h, h)
+     X, Y = np.meshgrid(x,y) 
+     #print("X - ",X.shape)
+     #print("Y - ",Y.shape)
+     #print("Z - ",Z.shape)
+     fig = plt.figure()
+     ax = plt.axes(projection="3d")
+     #ax.plot_wireframe(X, Y, Z, color='green', rstride=10, cstride=10)
+     ax.plot_wireframe(X, Y, Z, color='green')
+     #ax.plot_wireframe(X, Y, Z, rstride=10, cstride=10,cmap='winter', edgecolor='none')
+     ax.set_xlabel('x')
+     ax.set_ylabel('y')
+     ax.set_zlabel('z')
+     ax.set_title(title)
+      
+     plt.show()
+      
+   def draw_3d_plot( self, px_patch=None):
+      
+     #Z = self.getGreyScaleImage2()
+     if px_patch is not None:
+        w = px_patch.shape[0] 
+        h = px_patch.shape[1] 
+        if self.channels == 1: 
+          self.plot_3d(Z=px_patch,w=w,h=h,title='Greyscale=')
+        else:
+          for i in range(px_patch.shape[2]):
+            self.plot_3d(Z=px_patch[:,:,i],w=w,h=h,title='channel=' + str(i))
+     else:
+       if self.channels == 1: 
+         Z = self.img
+         self.plot_3d(Z)
+       else:
+         for i in range(self.channels):
+           Z = self.img[:,:,i]
+           self.plot_3d(Z,title=self.id + ' channel=' + str(i))
+         Z = self.getGreyScaleImage2()
+         self.plot_3d(Z,title=self.id + ' Grayscale')
+
 def main(argv=None):
    ''' 
    try:
@@ -532,12 +623,14 @@ def main(argv=None):
    '''
    #img2.showImageAndHistogram()
 
+
 if __name__ == "__main__":
    #main(sys.argv[1:])
    i_imgpath = '/data1/data/img/15916_right.jpeg'
    #i_imgpath = '/data1/data/croped/15916_right.jpeg'
    #i_imgpath = '/tmp/15916_right.jpeg'
-   i_imgpath = '/data1/data/croped_color/36181_left.jpeg'
+   i_imgpath = '/Users/pankaj.petkar/dev/ret/dr_color/36181_left.jpeg'
+   #i_imgpath = '/Users/pankaj.petkar/dev/ret/dr/dr_img/36181_left.jpeg'
    i_cdir = '/tmp/'
    print("Input image file is [{}]".format(i_imgpath))
    print("Input working directory is [{}]".format(i_cdir))
@@ -546,8 +639,16 @@ if __name__ == "__main__":
    img1 = myImg(imageid="xx",config=config,ekey='x123',path=i_imgpath)
    #img1.saveImage()
    img1.printImageProp()
-   #img1.showImageAndHistogram()
-   img1.printPixel(x0=1772,y0=1154,w=20,h=20)
+   img1.showImageAndHistogram()
+   '''
+   img1.getHorizontalDialtedImageWithRect()
+   img1.getGBinaryImage(fromimagekey="emorphgradient")
+   #img1.getMorphErode()
+   img1.showImageAndHistogram()
+   '''
+   #patch = img1.printPixel(x0=1772,y0=1154,w=60,h=60)
+   #img1.showImageAndHistogram("my patch",patch)
+   img1.draw_3d_plot()
    
    ''' 
    #img1.getGreyScaleImage2(convertFlag=True) 
