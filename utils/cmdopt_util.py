@@ -29,5 +29,37 @@ def get_preprocessing_index(argv):
     
    return _from, _batch_size
 
+def get_imgconf_params(argv):
+   _ifname = 'img_conf.json'
+   _ofname = 'img_conf.csv'
+    
+   try:
+      opts, args = getopt.getopt(argv,"h:i:o:",["help","input=","ouput="])
+   except getopt.GetoptError:
+      print('<utility> --input <input json file> --output <output file>')
+      print('return default values i.e. input=img_conf.json and output=img_conf.csv')
+       
+      return _ifname, _ofname
+      #sys.exit(2)
+   for opt, arg in opts:
+      #print("****",arg,opt)
+      if opt == '-h':
+         print('<utility> --input <input json file> --output <output file>')
+         sys.exit()
+      elif opt in ("-i", "--input"):
+         _ifname = arg
+      elif opt in ("-o", "--output"):
+         _ofname = arg
+      else:
+         assert False, "unhandled option"
+    
+   print(" Entered options...")
+   print("	_ifname	: %s" % (_ifname))
+   print("	_ofname	: %s" % (_ofname))
+    
+   return _ifname, _ofname
+
+
 if __name__ == "__main__":
-  get_preprocessing_index(sys.argv[1:])
+  #get_preprocessing_index(sys.argv[1:])
+  print(get_imgconf_params(sys.argv[1:]))

@@ -3,11 +3,7 @@ import sys, getopt
 
 import numpy as np
 #from scipy import misc
-<<<<<<< HEAD
 import cv2 as misc
-=======
-import cv2 as misc
->>>>>>> 098858f14da8fdd37d9c037feb5bef7c4c6220c4
 import math
 import re
 import os.path
@@ -94,17 +90,17 @@ class myImg(object):
       sep = '|'
       self.logger.log( self.ekey + sep + self.key + '::' + methodName + sep + msg + sep)
 
-   def showImage(self,imagekey=""):
+   def showImage(self,imagekey="",img=None,imageid=None):
       mname = 'showImage' 
-      imgid = None
-      img = None
       
-      if imagekey != "":
-        imgid = imagekey
-        img = self.imgdict.get(imagekey,None)
-      else:
-        imgid = self.id
-        img = self.img
+      if img is None:
+        if imagekey != "":
+          imgid = imagekey
+          img = self.imgdict.get(imagekey,None)
+        else:
+          imgid = self.id
+          img = self.img
+      
        
       misc.imshow(imagekey,img)
       k = misc.waitKey(0)
@@ -131,6 +127,7 @@ class myImg(object):
       #print('px - ' + px)
       #print(px.shape)
       px_patch = px
+      self.draw_3d_plot(px_patch=px)
      
        
       if len(self.img.shape) > 2:
@@ -152,7 +149,7 @@ class myImg(object):
       '''
       px -= np.mean(px)
       px /= np.std(px)
-      self.draw_3d_plot(px_patch=px)
+      #self.draw_3d_plot(px_patch=px)
       if len(self.img.shape) > 2:
         np.savetxt('/tmp/pxm0.csv', px[:,:,0], fmt='%0.3f')
         np.savetxt('/tmp/pxm1.csv', px[:,:,1], fmt='%0.3f')
@@ -171,6 +168,20 @@ class myImg(object):
       img_noisy = util.random_noise(self.img,mode='gaussian',seed=None,clip=True,mean=0,var=0.01)
       self.img = self.img ** img_noisy
       #print(' noise - ' + str(img_noisy[5:6,93:105]))
+    
+   def printImageProp2(self):
+      mname = 'printImageProp' 
+      
+      print('-------------------------------------------------------------------------------')
+      print('      id         - {}'.format(self.id))
+      print('      imgpath    - {}'.format(self.imgpath))
+      print('      size       - {}'.format(self.size))
+      print('      shape      - {} X {}'.format(str(self.width),str(self.height)))
+      print('      rawshape   - {}'.format(self.img.shape))
+      print('      pixel size - {}'.format(type(self.img)))
+      imagekeys = self.imgdict.keys()
+      for imagekey in imagekeys:
+        print('        image[{}] - size[{}] shape[{}]'.format(imagekey,self.imgdict.get(imagekey).size,self.imgdict.get(imagekey).shape))
     
    def printImageProp(self):
       mname = 'printImageProp' 
@@ -320,7 +331,7 @@ class myImg(object):
    def getImageByKey(self,imagekey):
       return self.imgdict[imagekey]
     
-   def saveImage(self,img=None,img_type_ext='.jpg',gen_new_filename=False):
+   def saveImage(self,img=None,img_type_ext='.jpg',gen_new_filename=False,augmented_ext=None):
       ofile = ""
        
       if gen_new_filename:
@@ -333,16 +344,21 @@ class myImg(object):
            imgpath = img_file_name[0]
         m1 = re.search("(^.*?)\.(\w+)$",imgpath)
         #ofile = self.config.odir + m1.group(1) + '_u' + img_type_ext
-        ofile = self.config.odir + m1.group(1) + img_type_ext
+        if augmented_ext is None:
+          ofile = self.config.odir + m1.group(1) + img_type_ext
+        else:
+          ofile = self.config.odir + m1.group(1) + augmented_ext + img_type_ext
       else:
         ofile = self.config.odir + 'cntr_' + self.id + img_type_ext
        
       if type(img).__name__ != self.config.typeNone: #img is passed so use it.
         #print("saveImage: Saving override Image.")
-        misc.imsave( ofile, img)
+        misc.imwrite( ofile, img)
       else:
         #print("##image shape[{}]".format(self.getImage().shape))
-        misc.imsave( ofile, self.getImage())
+        misc.imwrite( ofile, self.getImage())
+       
+      return ofile
 
    def writeDictImages(self):
       imagekeys = self.imgdict.keys()
@@ -553,9 +569,9 @@ class myImg(object):
      else:
        y = np.linspace( 0, h, h)
      X, Y = np.meshgrid(x,y) 
-     #print("X - ",X.shape)
-     #print("Y - ",Y.shape)
-     #print("Z - ",Z.shape)
+     print("X - ",X.shape)
+     print("Y - ",Y.shape)
+     print("Z - ",Z.shape)
      fig = plt.figure()
      ax = plt.axes(projection="3d")
      #ax.plot_wireframe(X, Y, Z, color='green', rstride=10, cstride=10)
@@ -589,6 +605,41 @@ class myImg(object):
            self.plot_3d(Z,title=self.id + ' channel=' + str(i))
          Z = self.getGreyScaleImage2()
          self.plot_3d(Z,title=self.id + ' Grayscale')
+    
+   def gen_augmented_images(self):
+     aug_filenames = []
+     img = self.img
+     w = self.width
+     h = self.height
+     center = (w / 2, h / 2)
+      
+     angle90 = 90
+     angle180 = 180
+     angle270 = 270
+      
+     scale = 1.0
+      
+     # Perform the counter clockwise rotation holding at the center
+     # 90 degrees
+     M = misc.getRotationMatrix2D(center, angle90, scale)
+     rotated90 = misc.warpAffine(img, M, (h, w))
+     self.printImageProp2()
+     o_file_name = self.saveImage( img=rotated90, gen_new_filename=True, augmented_ext='_r90')
+     #aug_img = myImg( imageid=self.id, config=self.config, path=o_file_name) 
+     #aug_img.printImageProp2()
+     #self.showImage(img=rotated90,imageid='rotated90')
+      
+     # 180 degrees
+     M = misc.getRotationMatrix2D(center, angle180, scale)
+     rotated180 = misc.warpAffine(img, M, (w, h))
+     #self.showImage(img=rotated180,imageid='rotated180')
+      
+     # 270 degrees
+     M = misc.getRotationMatrix2D(center, angle270, scale)
+     rotated270 = misc.warpAffine(img, M, (h, w))
+     #self.showImage(img=rotated270,imageid='rotated270')
+      
+ 
 
 def main(argv=None):
    ''' 
@@ -633,12 +684,8 @@ if __name__ == "__main__":
    i_imgpath = '/data1/data/img/15916_right.jpeg'
    #i_imgpath = '/data1/data/croped/15916_right.jpeg'
    #i_imgpath = '/tmp/15916_right.jpeg'
-<<<<<<< HEAD
    i_imgpath = '/Users/pankaj.petkar/dev/ret/dr_color/36181_left.jpeg'
-   #i_imgpath = '/Users/pankaj.petkar/dev/ret/dr/dr_img/36181_left.jpeg'
-=======
-   i_imgpath = '/disk1/data1/data/croped_color/36181_left.jpeg'
->>>>>>> 098858f14da8fdd37d9c037feb5bef7c4c6220c4
+   i_imgpath = '/Users/pankaj.petkar/dev/retina/kaggle/img/train/1378_left.jpeg'
    i_cdir = '/tmp/'
    print("Input image file is [{}]".format(i_imgpath))
    print("Input working directory is [{}]".format(i_cdir))
@@ -654,9 +701,11 @@ if __name__ == "__main__":
    #img1.getMorphErode()
    img1.showImageAndHistogram()
    '''
-   #patch = img1.printPixel(x0=1772,y0=1154,w=60,h=60)
+   #patch = img1.printPixel(x0=1772,y0=1547,w=70,h=70)
    #img1.showImageAndHistogram("my patch",patch)
+   img1.printImageProp2()
    img1.draw_3d_plot()
+   #img1.gen_augmented_images()
    
    ''' 
    #img1.getGreyScaleImage2(convertFlag=True) 
