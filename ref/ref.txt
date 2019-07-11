@@ -3,3 +3,9 @@
 3. Inception reserach work https://github.com/tensorflow/models/tree/master/research/inception
 4. Inception explained https://www.analyticsvidhya.com/blog/2018/10/understanding-inception-network-from-scratch/
 
+
+Ref to Kaggel Dataset analysis
+1. https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5788045/
+
+on web image marker
+https://yangcha.github.io/iview/iview.html

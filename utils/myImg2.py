@@ -3,11 +3,7 @@ import sys, getopt
 
 import numpy as np
 #from scipy import misc
-<<<<<<< HEAD
 import cv2 as misc
-=======
-import cv2 as misc
->>>>>>> 098858f14da8fdd37d9c037feb5bef7c4c6220c4
 import math
 import re
 import os.path
@@ -22,7 +18,7 @@ import config as cutil
 class myImg(object):
    cname = 'myImg'
 
-   def __init__(self,path,imageid="x123",config=None,ekey="",img=None):
+   def __init__(self,path,imageid="x123",config=None,ekey="",img=None,channels=3):
       mname = '__init__' 
       
       self.id = imageid
@@ -52,7 +48,7 @@ class myImg(object):
               self.imgpath = path
             else:
               self.imgpath = self.config.odir + path
-         #misc.imsave( self.imgpath, img) #since img is passed, persist it in config.odir
+         #misc.imwrite( self.imgpath, img) #since img is passed, persist it in config.odir
       else: #path is passed, so use it to build img
          #check if mandatory param are passed. 
          if type(path).__name__ == self.config.typeNone:
@@ -63,7 +59,11 @@ class myImg(object):
          else:
            self.imgpath = self.config.idir + path
          #print("reading imgpath[{}]".format(self.imgpath))
-         self.img = misc.imread(self.imgpath) #1 param is for color/multi channel image read.
+         if channels == 3:
+           self.img = misc.imread(self.imgpath) #1 param is for color/multi channel image read.
+         else:
+           self.img = misc.imread(self.imgpath,misc.IMREAD_GRAYSCALE) #1 param is for color/multi channel image read.
+         #print("Read from path[{}] shape[{}]".format(path,self.img.shape))
 
       self.setImageMetadata()      
       self.imgdict = {} #initialize image dictionay
@@ -77,6 +77,7 @@ class myImg(object):
          self.channels = self.img.shape[2]
       else:
          self.channels = 1
+      #print("channel********",self.channels)
 
    def getImage(self):
       return self.img
@@ -111,7 +112,7 @@ class myImg(object):
       if k == 27:         # wait for ESC key to exit
          misc.destroyAllWindows()
       elif k == ord('s'): # wait for 's' key to save and exit
-         #misc.imsave('o.png',self.img)
+         #misc.imwrite('o.png',self.img)
          misc.destroyAllWindows()
 
    def printPixel(self,x0,y0,w=5,h=.10):
@@ -172,6 +173,22 @@ class myImg(object):
       self.img = self.img ** img_noisy
       #print(' noise - ' + str(img_noisy[5:6,93:105]))
     
+   def printImageProp2(self):
+      mname = 'printImageProp' 
+      
+      print('-------------------------------------------------------------------------------')
+      print('      id         - {}'.format(self.id))
+      print('      imgpath    - {}'.format(self.imgpath))
+      print('      size       - {}'.format(self.size))
+      print('      shape      - {} X {}'.format(str(self.width),str(self.height)))
+      print('      rawshape   - {}'.format(self.img.shape))
+      print('      pixel size - {}'.format(type(self.img)))
+      imagekeys = self.imgdict.keys()
+      for imagekey in imagekeys:
+        print('        image[{}] - size[{}] shape[{}]'.format(imagekey,self.imgdict.get(imagekey).size,self.imgdict.get(imagekey).shape))
+      #self.logger.log('----------------------------------------------------')
+
+    
    def printImageProp(self):
       mname = 'printImageProp' 
       
@@ -187,10 +204,25 @@ class myImg(object):
         self.logger.log('        image[{}] - size[{}] shape[{}]'.format(imagekey,self.imgdict.get(imagekey).size,self.imgdict.get(imagekey).shape))
       #self.logger.log('----------------------------------------------------')
 
+   def getImageFromSpecificChannel(self,channel=2,convertFlag = False):
+      if self.channels == 3:
+        if convertFlag:
+          self.img = self.img[:,:,channel]
+          #print(self.img.shape,"*******")
+          self.setImageMetadata()
+           
+          return self.img
+        else:
+           
+          return self.img[:,:,channel]
+      else:
+        #for existing single channel system, return img as is 
+        return self.img
+
    def getGreyScaleImage2(self,convertFlag = False):
-      red = .3
-      blue = .1
-      green = .6
+      red = .23
+      blue = .07
+      green = .7
       if self.channels == 3:
         if convertFlag:
           #self.img = np.average( self.img, axis=2)
@@ -339,16 +371,16 @@ class myImg(object):
        
       if type(img).__name__ != self.config.typeNone: #img is passed so use it.
         #print("saveImage: Saving override Image.")
-        misc.imsave( ofile, img)
+        misc.imwrite( ofile, img)
       else:
-        #print("##image shape[{}]".format(self.getImage().shape))
-        misc.imsave( ofile, self.getImage())
+        #print("##saving image[{}] shape[{}]".format(ofile,self.getImage().shape))
+        misc.imwrite( ofile, self.getImage())
 
    def writeDictImages(self):
       imagekeys = self.imgdict.keys()
       for imagekey in imagekeys:
          ofile = self.config.odir + self.id + '_' + imagekey + '.jpg'
-         misc.imsave( ofile ,self.imgdict.get(imagekey))
+         misc.imwrite( ofile ,self.imgdict.get(imagekey))
 
    def imageAveraging(self,neig,img):
       mname = 'imageAveraging' 
@@ -619,6 +651,7 @@ def main(argv=None):
    img1 = myImg(imageid="xx",config=config,ekey='x123',path=i_imgpath)
    #img1.saveImage()
    img1.printImageProp()
+   print("----------------------------------------------")
    '''
    img1.getHorizontalDialtedImageWithRect()
    img1.getGBinaryImage(fromimagekey="emorphgradient")
@@ -630,15 +663,11 @@ def main(argv=None):
 
 if __name__ == "__main__":
    #main(sys.argv[1:])
-   i_imgpath = '/data1/data/img/15916_right.jpeg'
+   i_imgpath = '/disk1/data1/data/train/15916_right.jpeg'
    #i_imgpath = '/data1/data/croped/15916_right.jpeg'
    #i_imgpath = '/tmp/15916_right.jpeg'
-<<<<<<< HEAD
-   i_imgpath = '/Users/pankaj.petkar/dev/ret/dr_color/36181_left.jpeg'
+   #i_imgpath = '/Users/pankaj.petkar/dev/ret/dr_color/36181_left.jpeg'
    #i_imgpath = '/Users/pankaj.petkar/dev/ret/dr/dr_img/36181_left.jpeg'
-=======
-   i_imgpath = '/disk1/data1/data/croped_color/36181_left.jpeg'
->>>>>>> 098858f14da8fdd37d9c037feb5bef7c4c6220c4
    i_cdir = '/tmp/'
    print("Input image file is [{}]".format(i_imgpath))
    print("Input working directory is [{}]".format(i_cdir))
@@ -646,8 +675,8 @@ if __name__ == "__main__":
    config = cutil.Config(configid="myConfId",cdir=i_cdir)
    img1 = myImg(imageid="xx",config=config,ekey='x123',path=i_imgpath)
    #img1.saveImage()
-   img1.printImageProp()
-   img1.showImageAndHistogram()
+   img1.printImageProp2()
+   #img1.showImageAndHistogram()
    '''
    img1.getHorizontalDialtedImageWithRect()
    img1.getGBinaryImage(fromimagekey="emorphgradient")
@@ -656,13 +685,14 @@ if __name__ == "__main__":
    '''
    #patch = img1.printPixel(x0=1772,y0=1154,w=60,h=60)
    #img1.showImageAndHistogram("my patch",patch)
-   img1.draw_3d_plot()
+   #img1.draw_3d_plot()
    
-   ''' 
-   #img1.getGreyScaleImage2(convertFlag=True) 
-   img1.padImage(2000,2000)
+   #''' 
+   img1.getImageFromSpecificChannel(channel=2,convertFlag=True) 
+   img1.padImage(2500,2500)
    img1.saveImage(img_type_ext='.jpeg',gen_new_filename=True)
    i_imgpath = '/tmp/img/15916_right.jpeg'
-   img2 = myImg(imageid="xx",config=config,ekey='x123',path=i_imgpath)
-   img2.printImageProp()
-   ''' 
+   print("Input image file is [{}]".format(i_imgpath))
+   img2 = myImg(imageid="xx1",config=config,ekey='x123',path=i_imgpath,channels=1)
+   img2.printImageProp2()
+   #''' 
