@@ -11,14 +11,13 @@ import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d
 
 #from matplotlib import pyplot as plt
-from skimage import util
 
 import config as cutil
 
 class myImg(object):
    cname = 'myImg'
 
-   def __init__(self,path,imageid="x123",config=None,ekey="",img=None):
+   def __init__(self,path,imageid="x123",config=None,ekey="",img=None,channels=3):
       mname = '__init__' 
       
       self.id = imageid
@@ -48,7 +47,7 @@ class myImg(object):
               self.imgpath = path
             else:
               self.imgpath = self.config.odir + path
-         #misc.imsave( self.imgpath, img) #since img is passed, persist it in config.odir
+         #misc.imwrite( self.imgpath, img) #since img is passed, persist it in config.odir
       else: #path is passed, so use it to build img
          #check if mandatory param are passed. 
          if type(path).__name__ == self.config.typeNone:
@@ -59,7 +58,11 @@ class myImg(object):
          else:
            self.imgpath = self.config.idir + path
          #print("reading imgpath[{}]".format(self.imgpath))
-         self.img = misc.imread(self.imgpath) #1 param is for color/multi channel image read.
+         if channels == 3:
+           self.img = misc.imread(self.imgpath) #1 param is for color/multi channel image read.
+         else:
+           self.img = misc.imread(self.imgpath,misc.IMREAD_GRAYSCALE) #1 param is for color/multi channel image read.
+         #print("Read from path[{}] shape[{}]".format(path,self.img.shape))
 
       self.setImageMetadata()      
       self.imgdict = {} #initialize image dictionay
@@ -73,6 +76,7 @@ class myImg(object):
          self.channels = self.img.shape[2]
       else:
          self.channels = 1
+      #print("channel********",self.channels)
 
    def getImage(self):
       return self.img
@@ -107,7 +111,7 @@ class myImg(object):
       if k == 27:         # wait for ESC key to exit
          misc.destroyAllWindows()
       elif k == ord('s'): # wait for 's' key to save and exit
-         #misc.imsave('o.png',self.img)
+         #misc.imwrite('o.png',self.img)
          misc.destroyAllWindows()
 
    def printPixel(self,x0,y0,w=5,h=.10):
@@ -182,6 +186,8 @@ class myImg(object):
       imagekeys = self.imgdict.keys()
       for imagekey in imagekeys:
         print('        image[{}] - size[{}] shape[{}]'.format(imagekey,self.imgdict.get(imagekey).size,self.imgdict.get(imagekey).shape))
+      #self.logger.log('----------------------------------------------------')
+
     
    def printImageProp(self):
       mname = 'printImageProp' 
@@ -198,10 +204,25 @@ class myImg(object):
         self.logger.log('        image[{}] - size[{}] shape[{}]'.format(imagekey,self.imgdict.get(imagekey).size,self.imgdict.get(imagekey).shape))
       #self.logger.log('----------------------------------------------------')
 
+   def getImageFromSpecificChannel(self,channel=2,convertFlag = False):
+      if self.channels == 3:
+        if convertFlag:
+          self.img = self.img[:,:,channel]
+          #print(self.img.shape,"*******")
+          self.setImageMetadata()
+           
+          return self.img
+        else:
+           
+          return self.img[:,:,channel]
+      else:
+        #for existing single channel system, return img as is 
+        return self.img
+
    def getGreyScaleImage2(self,convertFlag = False):
-      red = .3
-      blue = .1
-      green = .6
+      red = .23
+      blue = .07
+      green = .7
       if self.channels == 3:
         if convertFlag:
           #self.img = np.average( self.img, axis=2)
@@ -364,7 +385,7 @@ class myImg(object):
       imagekeys = self.imgdict.keys()
       for imagekey in imagekeys:
          ofile = self.config.odir + self.id + '_' + imagekey + '.jpg'
-         misc.imsave( ofile ,self.imgdict.get(imagekey))
+         misc.imwrite( ofile ,self.imgdict.get(imagekey))
 
    def imageAveraging(self,neig,img):
       mname = 'imageAveraging' 
@@ -560,18 +581,22 @@ class myImg(object):
       return y + int(5 * image_scale)  
 
    def plot_3d( self, Z, w=None, h=None, title='surface'):
+      
      if w is None:
        x = np.linspace( 0, self.width, self.width)
      else:
        x = np.linspace( 0, w, w)
+      
      if h is None:
        y = np.linspace( 0, self.height, self.height)
      else:
        y = np.linspace( 0, h, h)
+      
      X, Y = np.meshgrid(x,y) 
-     print("X - ",X.shape)
-     print("Y - ",Y.shape)
-     print("Z - ",Z.shape)
+     print(" X - ",X.shape)
+     print(" Y - ",Y.shape)
+     print(" Z - ",Z.shape)
+      
      fig = plt.figure()
      ax = plt.axes(projection="3d")
      #ax.plot_wireframe(X, Y, Z, color='green', rstride=10, cstride=10)
@@ -602,6 +627,7 @@ class myImg(object):
        else:
          for i in range(self.channels):
            Z = self.img[:,:,i]
+           Z = Z.transpose(Z,(1,0))
            self.plot_3d(Z,title=self.id + ' channel=' + str(i))
          Z = self.getGreyScaleImage2()
          self.plot_3d(Z,title=self.id + ' Grayscale')
@@ -670,6 +696,7 @@ def main(argv=None):
    img1 = myImg(imageid="xx",config=config,ekey='x123',path=i_imgpath)
    #img1.saveImage()
    img1.printImageProp()
+   print("----------------------------------------------")
    '''
    img1.getHorizontalDialtedImageWithRect()
    img1.getGBinaryImage(fromimagekey="emorphgradient")
@@ -681,11 +708,11 @@ def main(argv=None):
 
 if __name__ == "__main__":
    #main(sys.argv[1:])
-   i_imgpath = '/data1/data/img/15916_right.jpeg'
+   i_imgpath = '/disk1/data1/data/train/15916_right.jpeg'
    #i_imgpath = '/data1/data/croped/15916_right.jpeg'
    #i_imgpath = '/tmp/15916_right.jpeg'
-   i_imgpath = '/Users/pankaj.petkar/dev/ret/dr_color/36181_left.jpeg'
-   i_imgpath = '/Users/pankaj.petkar/dev/retina/kaggle/img/train/1378_left.jpeg'
+   #i_imgpath = '/Users/pankaj.petkar/dev/ret/dr_color/36181_left.jpeg'
+   i_imgpath = '/tmp/patches/1100_left_mi_2212.jpeg'
    i_cdir = '/tmp/'
    print("Input image file is [{}]".format(i_imgpath))
    print("Input working directory is [{}]".format(i_cdir))
@@ -693,7 +720,7 @@ if __name__ == "__main__":
    config = cutil.Config(configid="myConfId",cdir=i_cdir)
    img1 = myImg(imageid="xx",config=config,ekey='x123',path=i_imgpath)
    #img1.saveImage()
-   img1.printImageProp()
+   img1.printImageProp2()
    img1.showImageAndHistogram()
    '''
    img1.getHorizontalDialtedImageWithRect()
@@ -708,10 +735,11 @@ if __name__ == "__main__":
    #img1.gen_augmented_images()
    
    ''' 
-   #img1.getGreyScaleImage2(convertFlag=True) 
-   img1.padImage(2000,2000)
+   img1.getImageFromSpecificChannel(channel=2,convertFlag=True) 
+   img1.padImage(2500,2500)
    img1.saveImage(img_type_ext='.jpeg',gen_new_filename=True)
    i_imgpath = '/tmp/img/15916_right.jpeg'
-   img2 = myImg(imageid="xx",config=config,ekey='x123',path=i_imgpath)
-   img2.printImageProp()
+   print("Input image file is [{}]".format(i_imgpath))
+   img2 = myImg(imageid="xx1",config=config,ekey='x123',path=i_imgpath,channels=1)
+   img2.printImageProp2()
    ''' 

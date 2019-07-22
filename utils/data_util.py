@@ -12,7 +12,6 @@ import keras
 sys.path.append('../')
 
 from utils import config as cutil
-from utils import json_util as jutil
 from utils import myImg2 as myimg
 from utils import cmdopt_util as cmd_util
 
@@ -253,7 +252,8 @@ class Data(object):
        
         #check if image needs to be converted to greyscale.  
         if convert_to_greyscale: 
-          myimg1.getGreyScaleImage2(convertFlag=True) 
+          #myimg1.getGreyScaleImage2(convertFlag=True) 
+          myimg1.getImageFromSpecificChannel(channel=2,convertFlag=True) 
          
         #curtail image to specific frame size. 
         myimg1.padImage(n_img_w,n_img_h)
@@ -443,9 +443,9 @@ class Data(object):
       #self.log( mname, "Level [%d] [%d] recs" % (label,temp_df['level'].count()), level=3)
       train_frac = 0.97
       val_frac = 0.80
-      if label == 0:
-        train_frac=0.35
-        val_frac = 0.02
+      if label == 1:
+        train_frac=0.5
+        val_frac = 0.05
       train_df = train_df.append( temp_df.sample( frac=train_frac, replace=False, random_state=self.random_seed))
       temp_df =  temp_df[~temp_df.index.isin(train_df.index)]
       val_df = val_df.append( temp_df.sample( frac=val_frac, replace=False, random_state=self.random_seed))
@@ -722,7 +722,7 @@ class Data(object):
       imgpath = self.img_dir_path + image_id + self.img_filename_ext 
        
       if os.path.exists(imgpath):
-        myimg1 = myimg.myImg( imageid=image_id, config=self.myImg_config, path=imgpath) 
+        myimg1 = myimg.myImg( imageid=image_id, config=self.myImg_config, path=imgpath,channels=channels) 
         #myimg1.getGreyScaleImage2(convertFlag=True)
         #self.channels = 1
         #myimg1.padImage(n_img_w,n_img_h)
@@ -754,8 +754,9 @@ class Data(object):
       #x_buf = x_buf.astype('float32') / 255
       x_buf = x_buf.astype('float32')
       x_buf /= 255.0
-      x_buf -= np.mean(x_buf)
-      x_buf /= np.std(x_buf)
+      x_buf -= np.min(x_buf)
+      x_buf /= np.max(x_buf)
+       
       # Crop the central [height, width] of the image.
       #x_buf = tf.cast( x_buf, tf.float32)
       #x_buf = tf.image.resize_image_with_crop_or_pad(x_buf,n_img_h,n_img_w)
@@ -812,6 +813,6 @@ if __name__ == "__main__":
   data = Data()
   #from_index, batch_size = cmd_util.get_preprocessing_index(sys.argv[1:])
   #print(from_index,batch_size)
-  #data.preprocess_images( convert_to_greyscale=False, from_index=from_index, batch_size=batch_size)
+  #data.preprocess_images( convert_to_greyscale=True, from_index=from_index, batch_size=batch_size)
   #data.load_img_data()
   data.initialize_for_batch_load()

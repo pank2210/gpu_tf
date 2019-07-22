@@ -6,3 +6,4 @@ keras
 dpath
 scipy
 scikit-image
+shapely

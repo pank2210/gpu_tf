@@ -59,6 +59,33 @@ def get_imgconf_params(argv):
     
    return _ifname, _ofname
 
+def get_imgpath(argv):
+   _ifname = '/tmp/img/10_left.jpeg'
+   help_str = '<utility> --input <input image file>'
+    
+   try:
+      opts, args = getopt.getopt(argv,"h:i:",["help","input="])
+   except getopt.GetoptError:
+      print(help_str)
+      print('return default values i.e. input=/tmp/img/10_left.jpeg')
+       
+      return _ifname
+      #sys.exit(2)
+   for opt, arg in opts:
+      #print("****",arg,opt)
+      if opt == '-h':
+         print(help_str)
+         sys.exit()
+      elif opt in ("-i", "--input"):
+         _ifname = arg
+      else:
+         assert False, "unhandled option"
+    
+   print(" Entered options...")
+   print("	_ifname	: %s" % (_ifname))
+    
+   return _ifname
+
 
 if __name__ == "__main__":
   #get_preprocessing_index(sys.argv[1:])
