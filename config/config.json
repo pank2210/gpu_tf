@@ -1,17 +1,17 @@
 {
   "common": {
         "verbose": 4,
-        "cdir": "/disk1/data1/ret/gpu_tf/",
-        "data_dir_path": "/disk1/data1/data/"
+        "cdir": "/Users/pankaj.petkar/dev/ret/gpu_tf/",
+        "data_dir_path": "/Users/pankaj.petkar/dev/ret/data/"
      },
   "img": {
         "channels": 3,
         "img_processing_capacity": 0,
-        "img_width": 1500,
-        "img_heigth": 1500,
-        "img_dir_path": "/disk1/data1/data/croped_1.5k/",
-        "img_croped_dir_path": "/disk1/data1/data/croped_1k/",
-        "img_filename_ext": ".jpeg"
+        "img_width": 128,
+        "img_heigth": 128,
+        "img_dir_path": "/tmp/patches/",
+        "img_croped_dir_path": "/tmp/patches/",
+        "img_filename_ext": ".npy"
      },
   "train": {
         "label_data_file": "trainLabels.csv"

@@ -239,7 +239,7 @@ class Data(object):
       sys.stdout.write("\b" * len(progress_sts)) # return to start of line, after '['
       sys.stdout.flush()
        
-      imgpath = self.img_dir_path + rec.image + self.img_filename_ext 
+      imgpath = self.img_dir_path + rec.image + '_oi' + self.img_filename_ext 
       self.df.loc[i,'imgpath'] = imgpath
        
       #skip already processed data 
@@ -783,6 +783,81 @@ class Data(object):
                  #(tf.uint8, tf.float32, tf.int64), \
                  #(tf.TensorShape([self.img_width,self.img_heigth]),tf.TensorShape([1,5],tf.TensorShape[1])))
                  (tf.TensorShape(None),tf.TensorShape([self.img_width,self.img_heigth,self.channels]),tf.TensorShape([self.no_classes])))
+    dataset = dataset.batch(self.batch_size)
+    if self.data_file != 'test':
+       dataset = dataset.shuffle(buffer_size=self.pre_fetch*self.batch_size,seed=self.batch_random_seed)
+    _iterator = dataset.make_initializable_iterator()
+    #_iterator = dataset.make_one_shot_iterator()
+     
+    return dataset,_iterator
+  
+     
+  def data_generator(self):
+    #initialize all variables... 
+    mname = 'data_generator'
+    
+    fd = open( self.train_data_dir + self.data_file + '_df.csv', 'r')
+    cnt = 0
+    file_missing = 0
+    
+    #loop in through dataframe. 
+    while True:
+      n_img_w = self.img_width
+      n_img_h = self.img_heigth
+      channels = self.channels
+       
+      x_buf = np.zeros(( n_img_w, n_img_h, channels), dtype='uint8')
+      y_buf = None
+       
+      #self.log( mname, "[{}] recs for set.".format(img_cnt), level=3)
+       
+      line = fd.readline()
+      if line == "":
+         fd.seek(0)
+         line = fd.readline()
+      line = line.strip().split(',')
+      image_id = line[0] 
+      label_id = line[1] 
+       
+      imgpath = self.img_dir_path + image_id + '_oi' + self.img_filename_ext #recreate original file URI
+      labelpath = self.img_dir_path + image_id + '_ti' + self.img_filename_ext  #recreate target ground truth
+       
+      if os.path.exists(imgpath) and os.path.exists(labelpath):
+        img = np.load(imgpath) #Load original image
+        label = np.load(labelpath) #load the label
+        label = np.reshape(label,(1,label.shape[0]*label.shape[1])) #flatten the label
+         
+        if self.channels == 1:
+          x_buf[:,:,0] = img
+        else:
+          x_buf[:,:,:] = img
+         
+        cnt += 1
+        self.processing_cnt += 1
+      else:
+        print( mname, "****Image file [{}] doesn't exists!!!".format(imgpath))
+        self.log( mname, "Image file [{}] doesn't exists!!!".format(imgpath), level=2)
+        file_missing += 1
+         
+      #create y array as required
+      y_buf = keras.utils.to_categorical( label, self.no_classes)
+      #print("XXXXX",image_id,label,y_buf,y_buf.shape)
+       
+      #x_buf = x_buf.astype('float32') / 255
+      x_buf = x_buf.astype('float32')
+      x_buf /= 255.0
+      x_buf -= np.min(x_buf)
+      x_buf /= np.max(x_buf)
+       
+      yield ( image_id, x_buf, y_buf)
+   
+  def get_iterator2(self):
+     
+    dataset = tf.data.Dataset.from_generator( \
+                 self.data_generator, \
+                 (tf.string,tf.float32, tf.float32), \
+                 (tf.TensorShape(None),tf.TensorShape([self.img_width,self.img_heigth,self.channels]),
+                               tf.TensorShape([self.img_width * self.img_heigth,self.no_classes])))
     dataset = dataset.batch(self.batch_size)
     if self.data_file != 'test':
        dataset = dataset.shuffle(buffer_size=self.pre_fetch*self.batch_size,seed=self.batch_random_seed)

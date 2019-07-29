@@ -219,9 +219,13 @@ class myImgExtractor:
       return reconstructed_img, stratified_img
   
   def generate_data(self):
-    fn = 'gen_images'
+    fn = 'generate_data'
+    out_fl = 'patches_df.csv'
     _batch_size = 1 #batch size to process images
-    
+     
+    #open file for writing DF for patches
+    patch_fd = open( self.tdir + out_fl, 'w')
+     
     #get img_id's for which this process nees to be run...
     img_ids = self.mask_df.img_id.unique()
      
@@ -244,9 +248,12 @@ class myImgExtractor:
          
         #save all files.
         id = img_id.split('.')[0]
-        cv2.imwrite( self.tdir + id + '_mi_' + str(i) + '.jpeg', mi_im)
-        cv2.imwrite( self.tdir + id + '_oi_' + str(i) + '.jpeg', oi_im)
-        np.save( self.tdir + id + '_ti_' + str(i), ti_im)
+        #cv2.imwrite( self.tdir + id + '_mi_' + str(i) + '.jpeg', mi_im)
+        #cv2.imwrite( self.tdir + id + '_oi_' + str(i) + '.jpeg', oi_im)
+        np.save( self.tdir + id + '_' + str(i) + '_oi', oi_im)
+        np.save( self.tdir + id + '_' + str(i) + '_mi', mi_im)
+        np.save( self.tdir + id + '_' + str(i) + '_ti', ti_im)
+        patch_fd.write(  id + '_' + str(i) + '\n')
         '''
         if ti_im.sum() > 0:
           self.mylog(fn,"patch - [%d] sum[%.1f]" % (i,ti_im.sum()/(3*self.truth_pixel)))
