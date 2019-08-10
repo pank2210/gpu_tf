@@ -12,6 +12,7 @@ import keras
 sys.path.append('../')
 
 from utils import config as cutil
+from utils import json_util as jutil
 from utils import myImg2 as myimg
 from utils import cmdopt_util as cmd_util
 
@@ -807,7 +808,7 @@ class Data(object):
       channels = self.channels
        
       x_buf = np.zeros(( n_img_w, n_img_h, channels), dtype='uint8')
-      y_buf = None
+      y_buf = np.zeros(( n_img_w*n_img_h), dtype='uint8')
        
       #self.log( mname, "[{}] recs for set.".format(img_cnt), level=3)
        
@@ -815,22 +816,23 @@ class Data(object):
       if line == "":
          fd.seek(0)
          line = fd.readline()
-      line = line.strip().split(',')
-      image_id = line[0] 
-      label_id = line[1] 
+      image_id = line.strip() #.split(',')
+      #image_id = line[0] 
+      #label_id = line[1] 
        
       imgpath = self.img_dir_path + image_id + '_oi' + self.img_filename_ext #recreate original file URI
       labelpath = self.img_dir_path + image_id + '_ti' + self.img_filename_ext  #recreate target ground truth
        
       if os.path.exists(imgpath) and os.path.exists(labelpath):
         img = np.load(imgpath) #Load original image
-        label = np.load(labelpath) #load the label
-        label = np.reshape(label,(1,label.shape[0]*label.shape[1])) #flatten the label
-         
         if self.channels == 1:
           x_buf[:,:,0] = img
         else:
           x_buf[:,:,:] = img
+         
+        label = np.load(labelpath) #load the label
+        label = np.reshape(label,(1,label.shape[0]*label.shape[1])) #flatten the label
+        y_buf[:] = label
          
         cnt += 1
         self.processing_cnt += 1
@@ -840,14 +842,16 @@ class Data(object):
         file_missing += 1
          
       #create y array as required
-      y_buf = keras.utils.to_categorical( label, self.no_classes)
-      #print("XXXXX",image_id,label,y_buf,y_buf.shape)
+      #y_buf = keras.utils.to_categorical( label, self.no_classes)
+      #print("XXXXXXXXXXXXXX",image_id,label,y_buf,y_buf.shape)
        
       #x_buf = x_buf.astype('float32') / 255
       x_buf = x_buf.astype('float32')
       x_buf /= 255.0
-      x_buf -= np.min(x_buf)
-      x_buf /= np.max(x_buf)
+      x_buf_min = np.min(x_buf)
+      x_buf_max = np.max(x_buf)
+      x_buf -= x_buf_min
+      #x_buf /= x_buf_max
        
       yield ( image_id, x_buf, y_buf)
    
@@ -857,7 +861,7 @@ class Data(object):
                  self.data_generator, \
                  (tf.string,tf.float32, tf.float32), \
                  (tf.TensorShape(None),tf.TensorShape([self.img_width,self.img_heigth,self.channels]),
-                               tf.TensorShape([self.img_width * self.img_heigth,self.no_classes])))
+                               tf.TensorShape([self.img_width * self.img_heigth])))
     dataset = dataset.batch(self.batch_size)
     if self.data_file != 'test':
        dataset = dataset.shuffle(buffer_size=self.pre_fetch*self.batch_size,seed=self.batch_random_seed)

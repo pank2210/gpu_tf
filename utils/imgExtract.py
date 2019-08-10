@@ -465,9 +465,9 @@ if __name__ == "__main__":
     img_path = cmd_util.get_imgpath(sys.argv[1:])
   #def __init__(self,id,imgdir,img_size,tdir,patch_size,patch_stride,truth_pixel=1):
     img_extractor = myImgExtractor(id='ie23',
-                                     imgdir='/tmp/img/',
+                                     imgdir='/disk1/data1/data/train/',
                                      img_size=2048,
-                                     tdir='/tmp/patches/',
+                                     tdir='/disk1/data1/data/patches/',
                                      patch_size=128,
                                      patch_stride=32,
                                      truth_pixel=1

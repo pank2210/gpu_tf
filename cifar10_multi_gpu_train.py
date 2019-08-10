@@ -58,7 +58,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_dir', '/disk1/data1/data/models/inception',
                            """Directory where to write event logs """
                            """and checkpoint.""")
-tf.app.flags.DEFINE_integer('max_steps', 20000,
+tf.app.flags.DEFINE_integer('max_steps', 1000,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_integer('num_gpus', 2,
                             """How many GPUs to use.""")
@@ -218,12 +218,12 @@ def train(model_name='mymodel.ckpt'):
     
     #training dataset
     data.set_data_file('train')
-    _dataset, _iterator = data.get_iterator()
+    _dataset, _iterator = data.get_iterator2()
     training_init_op = _iterator.make_initializer(_dataset)
     
     #test dataset
     data.set_data_file('val')
-    _test_dataset, _test_iterator = data.get_iterator()
+    _test_dataset, _test_iterator = data.get_iterator2()
     test_init_op = _test_iterator.make_initializer(_test_dataset)
     
     # Calculate the gradients for each model tower.
