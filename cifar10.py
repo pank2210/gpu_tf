@@ -71,7 +71,7 @@ MOVING_AVERAGE_DECAY = 0.9999     # The decay to use for the moving average.
 NUM_EPOCHS_PER_DECAY = 5.0      # Epochs after which learning rate decays.
 LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
 #INITIAL_LEARNING_RATE = 0.0065   # Initial learning rate.
-INITIAL_LEARNING_RATE = 0.01   # Initial learning rate.
+INITIAL_LEARNING_RATE = 0.1   # Initial learning rate.
 
 # If a model is trained with multiple GPUs, prefix all Op names with tower_name
 # to differentiate the operations. Note that this prefix is removed from the
@@ -220,6 +220,9 @@ def softmax_layer(inpt, shape):
 
 def maxpool_layer( inpt, filter_, stride_, padding_='SAME'):
     return tf.nn.max_pool(inpt, ksize=filter_, strides=stride_, padding=padding_)
+
+def gavgpool_layer( inpt, filter_, stride_, padding_='SAME'):
+    return tf.layers.average_pooling2d(inpt, pool_size=filter_, strides=stride_, padding=padding_)
 
 def avgpool_layer( inpt, filter_, stride_, padding_='SAME'):
     return tf.nn.avg_pool(inpt, ksize=filter_, strides=stride_, padding=padding_)
@@ -511,10 +514,11 @@ def inception(inpt, is_training=True):
      
     #AvgGlobal pool layer 
     with tf.variable_scope('avgglobalpool5b') as scope:
-      filter_ = [1,3,3,1]
-      stride_ = [1,1,1,1]
+      #filter_ = [1,3,3,1]
+      filter_ = [3,3]
+      stride_ = [1,1]
       print("*****",scope.name,"**avgglobalool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
-      out = maxpool_layer(layers[-1], filter_, stride_, padding_='SAME')
+      out = gavgpool_layer(layers[-1], filter_, stride_, padding_='SAME')
       layers.append(out)
      
     #''' 
@@ -522,11 +526,11 @@ def inception(inpt, is_training=True):
     #Flatten layer
     with tf.variable_scope('flatten_and_dropout') as scope:
         out = tf.layers.flatten( layers[-1], name=scope.name)
-        out = tf.layers.dropout( inputs=out, rate=0.5, seed=101, training=is_training)
+        #out = tf.layers.dropout( inputs=out, rate=0.5, seed=101, training=is_training)
         layers.append(out)
         print("*****",scope.name,out.get_shape())
     
-    ''' 
+    #''' 
     #final FC layer
     fc_layers = 2
     fc_units_increment_factor = 2
@@ -539,11 +543,11 @@ def inception(inpt, is_training=True):
         out = tf.layers.dropout( inputs=out, rate=0.5, seed=101, training=is_training)
         layers.append(out)
         print("*****",scope.name,out.get_shape())
-    '''
+    #'''
      
     #Final Softmax Layer
     with tf.variable_scope('final') as scope:
-        out = tf.layers.dense( layers[-1], NUM_CLASSES, activation='softmax', name=scope.name)
+        out = tf.layers.dense( layers[-1], NUM_CLASSES, activation='sigmoid', name=scope.name)
         layers.append(out)
         print("*****",scope.name,out.get_shape())
      
@@ -640,7 +644,7 @@ def resnet(inpt, n, is_training=True):
      
     return layers[-1]
 
-def loss(logits, labels, loss_type='losses'):
+def loss(logits, labels, loss_type='losses', threshold=.5):
   """Add L2Loss to all the trainable variables.
 
   Add summary for "Loss" and "Loss/avg".
@@ -653,11 +657,12 @@ def loss(logits, labels, loss_type='losses'):
     Loss tensor of type float.
   """
   # Calculate the average cross entropy loss across the batch.
-  labels = tf.cast(labels, tf.int64)
+  labels = tf.cast(labels, tf.float32)
   print("labels ================",labels.get_shape())
   print("logits ================",logits.get_shape())
   #cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
-  cross_entropy = tf.nn.softmax_cross_entropy_with_logits_v2(
+  #cross_entropy = tf.nn.softmax_cross_entropy_with_logits_v2(
+  cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(
       labels=labels, logits=logits, name='cross_entropy_per_example')
   print("cross_entropy","================",cross_entropy.get_shape())
   cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
@@ -665,15 +670,23 @@ def loss(logits, labels, loss_type='losses'):
    
   if loss_type != 'losses':
     tf.add_to_collection( loss_type, cross_entropy_mean)
+    '''
     _, test_accu = tf.metrics.accuracy(labels=tf.argmax(labels,1),
                                            predictions=tf.argmax(logits,1))
     preds = tf.argmax( logits, 1)
     probs = tf.reduce_max( logits, 1)
+    preds = logits
+    preds[preds >= threshold] = 1.
+    preds[preds < threshold] = 0.
+    #print("preds","================",preds.get_shape())
+    '''
+    test_accu = tf.reduce_mean(tf.cast(tf.equal(tf.cast(labels,tf.float32), logits), tf.float32))
+    #print("test_accu","================",test_accu.get_shape())
     tf.add_to_collection( 'test_accuracy', test_accu)
-    tf.add_to_collection( 'test_preds', preds)
-    tf.add_to_collection( 'test_probs', probs)
+    #tf.add_to_collection( 'test_preds', preds)
+    tf.add_to_collection( 'test_probs', logits)
      
-    return preds, probs
+    return logits
   else:
     tf.add_to_collection( loss_type, cross_entropy_mean)
      

@@ -95,29 +95,29 @@ def tower_loss( scope, images, labels, loss_type='losses', image_ids=None):
   # Build the portion of the Graph calculating the losses. Note that we will
   # assemble the total_loss using a custom function below.
   if loss_type != 'losses':
-    preds, probs = cifar10.loss(logits, labels, loss_type)
+    probs = cifar10.loss(logits, labels, loss_type)
   else:
     _ = cifar10.loss(logits, labels, loss_type)
-  print("After loss....")
+  print("loss_type[%s]...." % (loss_type))
 
   # Assemble all of the losses for the current tower only.
   losses = tf.get_collection( loss_type, scope)
   #losses = tf.get_collection('losses')
   print("losses len ############",len(losses))
-
-  # Calculate the total loss for the current tower.
-  total_loss = tf.add_n(losses, name='total_' + loss_type)
-  print("total_loss ############",total_loss.get_shape())
-  
+   
   if loss_type != 'losses':
     if image_ids is not None:
       tf.add_to_collection( 'image_ids', image_ids)
     accuracies = tf.get_collection( 'test_accuracy', scope)
     mean_accuracy = tf.reduce_mean( accuracies)
      
-    return total_loss, mean_accuracy, preds, probs
+    return mean_accuracy, probs
   else:
     
+    #Calculate the total loss for the current tower.
+    total_loss = tf.add_n(losses, name='total_' + loss_type)
+    print("total_loss ############",total_loss.get_shape())
+  
     # Attach a scalar summary to all individual losses and the total loss; do the
     # same for the averaged version of the losses.
     for l in losses + [total_loss]:
@@ -237,6 +237,7 @@ def train(model_name='mymodel.ckpt'):
             # Calculate the loss for one tower of the CIFAR model. This function
             # constructs the entire CIFAR model but shares the variables across
             # all towers.
+            print("Entering sope - ",scope)
             loss, _ = tower_loss(scope, image_batch, label_batch)
             print("scope - ",scope,"loss #############",loss.get_shape())
 
@@ -251,15 +252,15 @@ def train(model_name='mymodel.ckpt'):
              
             #validation/Test set 
             _, test_image_batch, test_label_batch = _test_iterator.get_next()
-            _, test_accu, _, _ = tower_loss(scope, test_image_batch, test_label_batch, loss_type='test_losses')
+            test_accu, test_probs = tower_loss(scope, test_image_batch, test_label_batch, loss_type='test_losses')
             
             #below code prints gradiants from the networks.
-            #'''
+            '''
             print("grads ############# len ",len(grads))
             for i,grad in enumerate(grads):
               for j,g in enumerate(grad):
                 print(i,j,"grad +++",g)
-            #'''
+            '''
              
             # Keep track of the gradients across all towers.
             if grads is None:
@@ -333,17 +334,30 @@ def train(model_name='mymodel.ckpt'):
       assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
 
       if step % 10 == 0:
-        test_accu_value = sess.run(test_accu)
+        test_label_value,test_accu_value, test_probs_value = sess.run([test_label_batch,test_accu,test_probs])
         num_examples_per_step = FLAGS.batch_size * FLAGS.num_gpus
         examples_per_sec = num_examples_per_step / duration
         sec_per_batch = duration / FLAGS.num_gpus
         
         #print("*******test_accu[%s]*******" % (test_accu_value)) 
+        #print("*******test_probs type*******", type(test_probs_value))
+        #print("*******test_probs shape*******", test_probs_value.shape)
+         
+        pt50 = test_probs_value 
+        pt50[pt50 >= .5 ] = 1.
+        pt50[pt50 < .5 ] = 0.
+        pt50_accu = np.abs(pt50 - test_label_value).mean()
+         
+        pt75 = test_probs_value 
+        pt75[pt75 >= .75 ] = 1.
+        pt75[pt75 < .75 ] = 0.
+        pt75_accu = np.abs(pt75 - test_label_value).mean()
+         
         format_str = ('%s: step %d, loss=%.2f (%.1f examples/sec; %.3f '
-                      'sec/batch)  test accu[%.2f]')
+                      'sec/batch) accu[%.2f] accu75[%.2f]')
         print (format_str % (datetime.now(), step, loss_value,
                              examples_per_sec, sec_per_batch, 
-                             test_accu_value))
+                             pt50_accu,pt75_accu))
          
         ''' 
         if type(test_accu_value) is list: 
@@ -396,7 +410,7 @@ def test(model_name,test_examples):
             #validation/Test set 
             loss_type = 'test_losses'
             test_image_ids, test_image_batch, test_label_batch = _test_iterator.get_next()
-            _, test_accu, test_preds, test_probs = tower_loss(scope, test_image_batch, test_label_batch, loss_type, test_image_ids)
+            test_accu, test_probs = tower_loss(scope, test_image_batch, test_label_batch, loss_type, test_image_ids)
     # Build the summary operation based on the TF collection of Summaries.
     #summary_writer = tf.summary.FileWriter(FLAGS.eval_dir, g)
     summaries.append(tf.summary.scalar('test_accu', test_accu))
@@ -458,9 +472,9 @@ def test(model_name,test_examples):
      
     for step in xrange(test_examples):
       start_time = time.time()
-      test_accu_value, test_image_ids_value, test_label_value, test_preds_value, test_probs_value = sess.run([test_accu, test_image_ids, test_label_batch, test_preds, test_probs])
+      test_accu_value, test_image_ids_value, test_label_value, test_probs_value = sess.run([test_accu, test_image_ids, test_label_batch, test_probs])
       a_image_ids.append(test_image_ids_value)
-      a_preds.append(test_preds_value)
+      #a_preds.append(test_preds_value)
       a_labels.append(test_label_value)
       a_probs.append(test_probs_value)
       duration = time.time() - start_time
@@ -476,6 +490,7 @@ def test(model_name,test_examples):
       if step % 100 == 0:
         summary_str = sess.run(summary_op)
         summary_writer.add_summary(summary_str, step)
+    '''
     o_fd = open( test_out_file, 'w')
     o_fd.write("%s,%s,%s,%s\n" % ('img_id','label','pred','prob'))
     for i,ids in enumerate(a_image_ids):
@@ -483,6 +498,7 @@ def test(model_name,test_examples):
         o_fd.write("%s,%d,%d,%.5f\n" % (a_image_ids[i][j],np.argmax(a_labels[i][j]),a_preds[i][j],a_probs[i][j]))
     o_fd.close()
     print_groups(test_out_file)
+    '''
   
 def print_groups(i_file,g_count_key='prob',g_keys=['label','pred'],g_sort_keys=['label','pred']):
   fname = 'print_groups'
