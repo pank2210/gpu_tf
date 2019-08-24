@@ -486,6 +486,18 @@ class Data(object):
      
     return (self.train_df.level.count(), self.val_df.level.count(),  self.test_df.level.count()) 
   
+  def get_img_dir_path(self):
+    return self.img_dir_path
+  
+  def get_img_filename_ext(self):
+    return self.img_filename_ext
+  
+  def get_img_width(self):
+    return self.img_width
+  
+  def get_img_heigth(self):
+    return self.img_heigth
+  
   def get_batch_size(self):
     return self.batch_size
   
@@ -792,6 +804,26 @@ class Data(object):
      
     return dataset,_iterator
   
+     
+  def save_results(self,image_ids,probs):
+    #initialize all variables... 
+    mname = 'save_results'
+    
+    cnt = 0
+    n_img_w = self.img_width
+    n_img_h = self.img_heigth
+    
+    #loop in through dataframe. 
+    for image_id in image_ids:
+       
+      #self.log( mname, "cnt[{}] processing image_id[{}]".format(cnt,image_id), level=3)
+       
+      imgpath = self.img_dir_path + image_id + '_pi' + self.img_filename_ext #recreate original file URI
+       
+      img = np.reshape(probs[cnt],(n_img_w,n_img_h)) #recreate binary image of original size from flatten array
+      np.save(imgpath,img) #save predicted results as binary image
+         
+      cnt += 1 #scroll through batch of results.
      
   def data_generator(self):
     #initialize all variables... 

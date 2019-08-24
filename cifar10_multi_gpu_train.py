@@ -58,7 +58,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_dir', '/disk1/data1/data/models/inception',
                            """Directory where to write event logs """
                            """and checkpoint.""")
-tf.app.flags.DEFINE_integer('max_steps', 1000,
+tf.app.flags.DEFINE_integer('max_steps', 25000,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_integer('num_gpus', 2,
                             """How many GPUs to use.""")
@@ -393,10 +393,10 @@ def test(model_name,test_examples):
     data.set_batch_size( FLAGS.batch_size)
     data.set_no_classes( FLAGS.no_classes)
     test_out_file = FLAGS.train_dir + '/' + model_name + '_df.csv'
-    
+     
     #training dataset
     data.set_data_file('test')
-    _test_dataset, _test_iterator = data.get_iterator()
+    _test_dataset, _test_iterator = data.get_iterator2()
     test_init_op = _test_iterator.make_initializer(_test_dataset)
      
     tower_grads = []
@@ -479,6 +479,15 @@ def test(model_name,test_examples):
       a_probs.append(test_probs_value)
       duration = time.time() - start_time
        
+      #save results as binary image 
+      #data.save_results(test_image_ids_value,test_probs_value) 
+       
+      #caculate accuracy with new methods. 
+      pt75 = test_probs_value 
+      pt75[pt75 >= .75 ] = 1.
+      pt75[pt75 < .75 ] = 0.
+      test_accu_value = np.abs(pt75 - test_label_value).mean()
+       
       #assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
        
       if step % 10 == 0:
@@ -493,12 +502,22 @@ def test(model_name,test_examples):
     '''
     o_fd = open( test_out_file, 'w')
     o_fd.write("%s,%s,%s,%s\n" % ('img_id','label','pred','prob'))
+    '''
+    img_width = data.get_img_width()
+    img_heigth = data.get_img_heigth()
+    img_dir_path = data.get_img_dir_path()
+    img_filename_ext = data.get_img_filename_ext()
     for i,ids in enumerate(a_image_ids):
       for j,id in enumerate(ids):
-        o_fd.write("%s,%d,%d,%.5f\n" % (a_image_ids[i][j],np.argmax(a_labels[i][j]),a_preds[i][j],a_probs[i][j]))
-    o_fd.close()
-    print_groups(test_out_file)
-    '''
+        #o_fd.write("%s,%d,%d,%.5f\n" % (a_image_ids[i][j],np.argmax(a_labels[i][j]),a_preds[i][j],a_probs[i][j]))
+        #print("%s %s" % (a_image_ids[i][j],a_probs[i][j][:10]))
+        imgpath = img_dir_path + str(a_image_ids[i][j],"utf-8") + '_pi' + img_filename_ext #recreate original file URI
+          
+        img = np.reshape(a_probs[i][j],(img_width,img_heigth)) #recreate binary image of original size from flatten array
+        np.save(imgpath,img) #save predicted results as binary image
+         
+    #o_fd.close()
+    #print_groups(test_out_file)
   
 def print_groups(i_file,g_count_key='prob',g_keys=['label','pred'],g_sort_keys=['label','pred']):
   fname = 'print_groups'
@@ -520,7 +539,7 @@ def main(argv=None):  # pylint: disable=unused-argument
   mode = 'test'
   steps = '499'
    
-  model_name = 'res_d32_c32.cpkt'
+  #model_name = 'res_d32_c32.cpkt'
   #model_name = 'res_d44_c64_f7_p5_lr01_fc1024.cpkt-499'
   #model_name = 'dr1_res_d44_c64_f5_p5_lr01_fc1024.cpkt'
   #model_name = 'dr1_res_d44_c64_f5_p5_lr01_fc1024.cpkt-99'
@@ -537,6 +556,7 @@ def main(argv=None):  # pylint: disable=unused-argument
     steps = argv[2]
   #print_groups(i_file='/tmp/cifar10_train/test_out_df.csv')
   #'''
+   
   if mode == 'train':
     #if tf.gfile.Exists(FLAGS.train_dir):
     #  tf.gfile.DeleteRecursively(FLAGS.train_dir)
@@ -548,7 +568,7 @@ def main(argv=None):  # pylint: disable=unused-argument
     if tf.gfile.Exists(FLAGS.eval_dir):
       tf.gfile.DeleteRecursively(FLAGS.eval_dir)
     tf.gfile.MakeDirs(FLAGS.eval_dir)
-    test(model_name,test_examples=70)
+    test(model_name,test_examples=64)
 
 if __name__ == '__main__':
   tf.app.run()
