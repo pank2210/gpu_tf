@@ -75,7 +75,7 @@ class myImgExtractor:
     if os.path.exists(i_fl):
       self.mylog(fn,"Reading file[%s]" % (i_fl))
       self.mask_df = pd.read_csv( i_fl)
-      self.mylog(fn,"Records loaded[%d]" % (self.mask_df['filename'].count()))
+      self.mylog(fn,"Records loaded[%d]" % (self.mask_df['img_id'].count()))
       self.mylog(fn,"Target image shape - %s" % (img_shape))
     else:
       self.mylog(fn,"Image mask file config path[%s] doesnt exist." % (i_fl))
@@ -83,10 +83,10 @@ class myImgExtractor:
       
     #Reset all column names for quick usage. 
     #filename,shape_attributes.name,shape_attributes.x,shape_attributes.y,shape_attributes.width,shape_attributes.height,region_attributes.Name
-    self.mask_df.columns = col_names
-    
+     
     #Sort file as per usage progression logic
-    self.mask_df = self.mask_df.sort_values(['img_id','x','y'],ascending=[True,True,True])
+    #self.mask_df.columns = col_names
+    #self.mask_df = self.mask_df.sort_values(['img_id','x','y'],ascending=[True,True,True])
     #print(mask_df.head())
    
     ''' 
@@ -116,10 +116,55 @@ class myImgExtractor:
      
     #return patch of DF for given img_id
     return img_mask_df
+   
+  ''' 
+    This function just opens original image and its respect ground truth image for preparing training patches.
+    Technically both images i.e. original and ground truth (target image) should always be of same size.
+    the patch window for data prep will move simulataneously for both images to build pair patches. Every
+    patch of original image will have respective pair of target image or ground truth. 
+    Every pixel of ground truth is expcted result and every pixel will be predicted by model.
+  ''' 
+  def get_image_and_ground_truth( self, img_id):
+     fn = 'get_image_and_ground_truth'
+      
+     #self.mylog(fn,"Generating ground truth...")
+     
+     img_path = self.imgdir + 'images/' + img_id + '.jpg'
+     mask_path = self.imgdir + 'mask/' + img_id + '_mask.jpg'
+     myimg1 = None
+     #self.mylog(fn,"processing img_id[%s] img_path[%s]..." % (img_id,img_path))
+      
+     if os.path.exists(img_path):
+       myimg1 = myimg.myImg( imageid=img_id, config=self.myImg_config, path=img_path) 
+     else:
+       print("Image file [%s] does not exists..." % (img_path))
+       sys.exit(-1)
+          
+     if os.path.exists(mask_path):
+       myimg2 = myimg.myImg( imageid=img_id, config=self.myImg_config, path=mask_path) 
+     else:
+       print("Image mask file [%s] does not exists..." % (mask_path))
+       sys.exit(-1)
+          
+     image_org = myimg1.getImage()
+     #print("**********",image_org.shape,type(image_org.shape),type(image_org))
+     #self.mylog(fn,"org image shape [%d %d %d]" % (image_org.shape))
+     
+     #initialize truth image data
+     truth_img = myimg2.getImage()
+     #set truth_img with 1's and 0's based on pixel
+     #truth_img[truth_img>0] = 1.
+     #self.mylog(fn,"truth image shape [%d %d %d]" % (truth_img.shape))
+     
+     #return patch of DF for given img_id
+     return image_org, truth_img
   
-  #build ground truth
-  def build_ground_truth( self, img_id):
-     fn = 'build_ground_truth'
+  ''' 
+     build ground truth from mask dataset. The mask will be used to build target region of image i.e. 1's 
+    or while rest all remaining area within image becomes 0's.
+  ''' 
+  def build_ground_truth_from_mask( self, img_id):
+     fn = 'build_ground_truth_from_mask'
       
      #self.mylog(fn,"Generating ground truth...")
      
@@ -217,8 +262,18 @@ class myImgExtractor:
           reconstructed_img = tf.divide(sum_stratified_img, stratified_img_count)
        
       return reconstructed_img, stratified_img
-  
-  def generate_data(self):
+ 
+  ''' 
+     generate_data1 to used when we have rectangular or polygonal mask dataset for the ROI (region of interest)
+       code will use image_id available to locate all its masks. Available masks will be used to prepare a 
+       binary target image and mask image copy is prepare for reference or isualization. In target image a
+       all pixels for mask or ROI are made '1' while all rest of the image area pixels are made '0'.
+       Once target and mask images are build a patching algorithm is used to create image patches.
+        Each patch of given image is uniquely name using index and then further prepended with 2 characters 
+       that identifies type of image i.e. ti for target image, oi for origimal etc. So for image id 12_left.jpg
+       all its patches for target will have names like 12_left_1_ti.jpg, 12_left_2_ti.jpg, 12_left_3_ti.jpg etc.
+  ''' 
+  def generate_data1(self):
     fn = 'generate_data'
     out_fl = 'patches_df.csv'
     _batch_size = 1 #batch size to process images
@@ -234,7 +289,7 @@ class myImgExtractor:
       #if cnt > 2:
       #  break
       self.mylog(fn,"Generating img_id[%s]" % (img_id))
-      oi, ti, mi = self.build_ground_truth(img_id)
+      oi, ti, mi = self.build_ground_truth_from_mask(img_id)
       #mi = self.reshape_img( self.img_size, self.img_size, mi)
       #cv2.imshow(' masked image [' + img_ids[6] + ']', mi.astype(np.float32)/255)
       ti_ep = self.get_img_patches(img=ti)
@@ -252,6 +307,60 @@ class myImgExtractor:
         #cv2.imwrite( self.tdir + id + '_oi_' + str(i) + '.jpeg', oi_im)
         np.save( self.tdir + id + '_' + str(i) + '_oi', oi_im)
         np.save( self.tdir + id + '_' + str(i) + '_mi', mi_im)
+        np.save( self.tdir + id + '_' + str(i) + '_ti', ti_im)
+        patch_fd.write(  id + '_' + str(i) + '\n')
+        '''
+        if ti_im.sum() > 0:
+          self.mylog(fn,"patch - [%d] sum[%.1f]" % (i,ti_im.sum()/(3*self.truth_pixel)))
+           
+          #stack images side by side 
+          img_hstack = np.hstack((oi_im, ti_im))
+          img_hconcat = np.concatenate((oi_im, ti_im), axis=1)
+  
+          #cv2.imshow(' img_hstack patch - [' + str(i) + ']', img_hstack.astype(np.float32)/255)
+          #cv2.waitKey(0)
+          cv2.imshow(' img_hconcat patch - [' + str(i) + ']', img_hconcat.astype(np.float32)/255)
+          cv2.waitKey(0)
+        '''
+       
+      cnt += 1
+       
+    #self.process_img(img_ids[0])
+    
+  ''' 
+  ''' 
+  def generate_data2(self):
+    fn = 'generate_data2'
+    out_fl = 'patch_df.csv'
+    _batch_size = 1 #batch size to process images
+     
+    #open file for writing DF for patches
+    patch_fd = open( self.tdir + out_fl, 'w')
+     
+    #get img_id's for which this process nees to be run...
+    img_ids = self.mask_df.img_id.unique()
+     
+    cnt = 0 
+    for img_id in img_ids:
+      #if cnt > 2:
+      #  break
+      self.mylog(fn,"Generating img_id[%s]" % (img_id))
+      id = img_id.split('.')[0]
+      oi, ti = self.get_image_and_ground_truth(id)
+      #mi = self.reshape_img( self.img_size, self.img_size, mi)
+      #cv2.imshow(' masked image [' + img_ids[6] + ']', mi.astype(np.float32)/255)
+      ti_ep = self.get_img_patches(img=ti)
+      oi_ep = self.get_img_patches(img=oi)
+       
+      #Show extracted patches images
+      for i in range(oi_ep.shape[1]):
+        oi_im = oi_ep[0, i, :, :, :]
+        ti_im = ti_ep[0, i, :, :, 0]
+         
+        #save all files.
+        #cv2.imwrite( self.tdir + id + '_mi_' + str(i) + '.jpeg', mi_im)
+        #cv2.imwrite( self.tdir + id + '_oi_' + str(i) + '.jpeg', oi_im)
+        np.save( self.tdir + id + '_' + str(i) + '_oi', oi_im)
         np.save( self.tdir + id + '_' + str(i) + '_ti', ti_im)
         patch_fd.write(  id + '_' + str(i) + '\n')
         '''
@@ -465,14 +574,14 @@ if __name__ == "__main__":
     img_path = cmd_util.get_imgpath(sys.argv[1:])
   #def __init__(self,id,imgdir,img_size,tdir,patch_size,patch_stride,truth_pixel=1):
     img_extractor = myImgExtractor(id='ie23',
-                                     imgdir='/disk1/data1/data/train/',
+                                     imgdir='/disk1/data1/data/idrid/ex/',
                                      img_size=2048,
-                                     tdir='/disk1/data1/data/patches/',
+                                     tdir='/disk1/data1/data/px_he/',
                                      patch_size=128,
                                      patch_stride=32,
                                      truth_pixel=1
                                     )
-    img_extractor.generate_data()
+    img_extractor.generate_data2()
     #img_extractor.build_ground_truth('82_left.jpeg')
     #img_extractor.gen_images()
     #img_extractor.process_img(img_path=img_path)
