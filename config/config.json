@@ -9,15 +9,15 @@
         "img_processing_capacity": 0,
         "img_width": 128,
         "img_heigth": 128,
-        "img_dir_path": "/disk1/data1/data/patches/",
+        "img_dir_path": "/disk1/data1/data/px_he/",
         "img_croped_dir_path": "/disk1/data1/data/patches/",
         "img_filename_ext": ".npy"
      },
   "train": {
-        "label_data_file": "trainLabels.csv"
+        "label_data_file": "train_df.csv"
      },
   "test": {
-        "label_data_file": "testLabels.csv"
+        "label_data_file": "test_df.csv"
      },
   "model": {
         "param": {

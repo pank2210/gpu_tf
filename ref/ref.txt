@@ -13,4 +13,7 @@ https://yangcha.github.io/iview/iview.html
 Patch extraction
 https://stackoverflow.com/questions/44047753/reconstructing-an-image-after-using-extract-image-patches
 
+plot ROC Curve
+https://stackoverflow.com/questions/25009284/how-to-plot-roc-curve-in-python
+
 

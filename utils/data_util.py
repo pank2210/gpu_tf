@@ -863,13 +863,14 @@ class Data(object):
           x_buf[:,:,:] = img
          
         label = np.load(labelpath) #load the label
+        label[label > 0] = 1. #reset truth pixel to 1's else it should be 0's
         label = np.reshape(label,(1,label.shape[0]*label.shape[1])) #flatten the label
         y_buf[:] = label
          
         cnt += 1
         self.processing_cnt += 1
       else:
-        print( mname, "****Image file [{}] doesn't exists!!!".format(imgpath))
+        print( mname, "****df[{}] Image file [{}] doesn't exists!!!".format(self.data_file,imgpath))
         self.log( mname, "Image file [{}] doesn't exists!!!".format(imgpath), level=2)
         file_missing += 1
          

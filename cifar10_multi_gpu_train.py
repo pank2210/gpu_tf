@@ -58,7 +58,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_dir', '/disk1/data1/data/models/inception',
                            """Directory where to write event logs """
                            """and checkpoint.""")
-tf.app.flags.DEFINE_integer('max_steps', 25000,
+tf.app.flags.DEFINE_integer('max_steps', 100000,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_integer('num_gpus', 2,
                             """How many GPUs to use.""")
@@ -107,7 +107,9 @@ def tower_loss( scope, images, labels, loss_type='losses', image_ids=None):
    
   if loss_type != 'losses':
     if image_ids is not None:
-      tf.add_to_collection( 'image_ids', image_ids)
+      tf.add_to_collection( 'image_id', image_ids)
+      tf.add_to_collection('labels',labels)
+      tf.add_to_collection('probs',probs)
     accuracies = tf.get_collection( 'test_accuracy', scope)
     mean_accuracy = tf.reduce_mean( accuracies)
      
@@ -339,19 +341,28 @@ def train(model_name='mymodel.ckpt'):
         examples_per_sec = num_examples_per_step / duration
         sec_per_batch = duration / FLAGS.num_gpus
         
+        '''
         #print("*******test_accu[%s]*******" % (test_accu_value)) 
         #print("*******test_probs type*******", type(test_probs_value))
         #print("*******test_probs shape*******", test_probs_value.shape)
+        print("*******test_probs value*******", test_probs_value[:5,:10])
+        '''
          
         pt50 = test_probs_value 
         pt50[pt50 >= .5 ] = 1.
         pt50[pt50 < .5 ] = 0.
-        pt50_accu = np.abs(pt50 - test_label_value).mean()
+        pt50_accu = 1 - np.abs(pt50 - test_label_value).mean()
+        '''
+        print("*******test_label_value *******", test_label_value.shape)
+        print("*******test_label_value value*******", test_label_value[:5,:10])
+        #print("*******pt50 *******", pt50.shape)
+        print("*******pt50 value*******", pt50[:5,:10])
+        '''
          
         pt75 = test_probs_value 
         pt75[pt75 >= .75 ] = 1.
         pt75[pt75 < .75 ] = 0.
-        pt75_accu = np.abs(pt75 - test_label_value).mean()
+        pt75_accu = 1 - np.abs(pt75 - test_label_value).mean()
          
         format_str = ('%s: step %d, loss=%.2f (%.1f examples/sec; %.3f '
                       'sec/batch) accu[%.2f] accu75[%.2f]')
@@ -486,7 +497,7 @@ def test(model_name,test_examples):
       pt75 = test_probs_value 
       pt75[pt75 >= .75 ] = 1.
       pt75[pt75 < .75 ] = 0.
-      test_accu_value = np.abs(pt75 - test_label_value).mean()
+      test_accu_value = 1 - np.abs(pt75 - test_label_value).mean()
        
       #assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
        
