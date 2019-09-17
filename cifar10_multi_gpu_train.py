@@ -411,6 +411,9 @@ def test(model_name,test_examples):
     test_init_op = _test_iterator.make_initializer(_test_dataset)
      
     tower_grads = []
+    tower_labels = []
+    tower_probs = []
+    tower_accu = []
     with tf.variable_scope(tf.get_variable_scope(),reuse=tf.AUTO_REUSE):
       for i in xrange(FLAGS.num_gpus):
         with tf.device('/gpu:%d' % i):
@@ -422,6 +425,17 @@ def test(model_name,test_examples):
             loss_type = 'test_losses'
             test_image_ids, test_image_batch, test_label_batch = _test_iterator.get_next()
             test_accu, test_probs = tower_loss(scope, test_image_batch, test_label_batch, loss_type, test_image_ids)
+            tower_labels.append( test_label_batch)
+            tower_probs.append( test_probs)
+            tower_accu.append( test_accu)
+    # Build test op for key variable which needs to be used to execute graph
+    labels = tf.stack( tower_labels) 
+    labels = tf.reshape( labels, [-1]) 
+    probs = tf.stack( tower_probs) 
+    probs = tf.reshape( probs, [-1]) 
+    accu = tf.reduce_mean(tower_accu)
+     
+    #summary_writer = tf.summary.FileWriter(FLAGS.eval_dir, g)
     # Build the summary operation based on the TF collection of Summaries.
     #summary_writer = tf.summary.FileWriter(FLAGS.eval_dir, g)
     summaries.append(tf.summary.scalar('test_accu', test_accu))
@@ -483,29 +497,30 @@ def test(model_name,test_examples):
      
     for step in xrange(test_examples):
       start_time = time.time()
-      test_accu_value, test_image_ids_value, test_label_value, test_probs_value = sess.run([test_accu, test_image_ids, test_label_batch, test_probs])
-      a_image_ids.append(test_image_ids_value)
+      #test_accu_value, test_image_ids_value, test_label_value, test_probs_value = sess.run([test_accu, test_image_ids, test_label_batch, test_probs])
+      test_accu_value, test_label_value, test_probs_value = sess.run([accu, labels, probs])
+      #a_image_ids.append(test_image_ids_value)
       #a_preds.append(test_preds_value)
-      a_labels.append(test_label_value)
-      a_probs.append(test_probs_value)
+      a_labels.extend(test_label_value)
+      a_probs.extend(test_probs_value)
       duration = time.time() - start_time
        
       #save results as binary image 
       #data.save_results(test_image_ids_value,test_probs_value) 
        
       #caculate accuracy with new methods. 
-      pt75 = test_probs_value 
-      pt75[pt75 >= .75 ] = 1.
-      pt75[pt75 < .75 ] = 0.
-      test_accu_value = 1 - np.abs(pt75 - test_label_value).mean()
+      pt50 = test_probs_value 
+      pt50[pt50 >= .50 ] = 1.
+      pt50[pt50 < .50 ] = 0.
+      accu50 = 1 - np.abs(pt50 - test_label_value).mean()
        
       #assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
        
       if step % 10 == 0:
         format_str = ('%s: step %d, '
-                      'test accuracy[%.2f]')
+                      ' accu50[%.2f] accu[%.2f]')
         print (format_str % (datetime.now(), step,
-                              test_accu_value))
+                              accu50,test_accu_value))
        
       if step % 100 == 0:
         summary_str = sess.run(summary_op)
@@ -513,7 +528,6 @@ def test(model_name,test_examples):
     '''
     o_fd = open( test_out_file, 'w')
     o_fd.write("%s,%s,%s,%s\n" % ('img_id','label','pred','prob'))
-    '''
     img_width = data.get_img_width()
     img_heigth = data.get_img_heigth()
     img_dir_path = data.get_img_dir_path()
@@ -526,6 +540,10 @@ def test(model_name,test_examples):
           
         img = np.reshape(a_probs[i][j],(img_width,img_heigth)) #recreate binary image of original size from flatten array
         np.save(imgpath,img) #save predicted results as binary image
+    '''
+    pred_df = pd.DataFrame(list(zip(a_labels, a_probs)), 
+               columns =['label', 'prob']) 
+    pred_df.to_csv( test_out_file, index=False)
          
     #o_fd.close()
     #print_groups(test_out_file)

@@ -130,7 +130,7 @@ class myImgExtractor:
      #self.mylog(fn,"Generating ground truth...")
      
      img_path = self.imgdir + 'images/' + img_id + '.jpg'
-     mask_path = self.imgdir + 'mask/' + img_id + '_mask.jpg'
+     mask_path = self.imgdir + 'gt/' + img_id + '_HE.jpg'
      myimg1 = None
      #self.mylog(fn,"processing img_id[%s] img_path[%s]..." % (img_id,img_path))
       
@@ -347,6 +347,10 @@ class myImgExtractor:
       self.mylog(fn,"Generating img_id[%s]" % (img_id))
       id = img_id.split('.')[0]
       oi, ti = self.get_image_and_ground_truth(id)
+      
+      if (oi.shape[0] != ti.shape[0]) | (oi.shape[1] != oi.shape[1]): 
+        self.mylog("XXX original image and ground truth image size if not matching for img_id[{}]. oi[{}] and ti[{}]".format(img_id,oi.shape,ti.shape))
+        continue
       #mi = self.reshape_img( self.img_size, self.img_size, mi)
       #cv2.imshow(' masked image [' + img_ids[6] + ']', mi.astype(np.float32)/255)
       ti_ep = self.get_img_patches(img=ti)

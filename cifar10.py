@@ -679,8 +679,9 @@ def loss(logits, labels, loss_type='losses', threshold=.5):
     preds[preds >= threshold] = 1.
     preds[preds < threshold] = 0.
     #print("preds","================",preds.get_shape())
-    '''
     test_accu = tf.reduce_mean(tf.cast(tf.equal(tf.cast(labels,tf.float32), logits), tf.float32))
+    '''
+    test_accu = 1 - tf.reduce_mean(tf.math.abs(tf.math.subtract(logits,tf.cast(labels,tf.float32))))
     #print("test_accu","================",test_accu.get_shape())
     tf.add_to_collection( 'test_accuracy', test_accu)
     #tf.add_to_collection( 'test_preds', preds)
