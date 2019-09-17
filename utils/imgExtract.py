@@ -298,6 +298,7 @@ class myImgExtractor:
       #Show extracted patches images
       for i in range(oi_ep.shape[1]):
         oi_im = oi_ep[0, i, :, :, :]
+        oi_im = np.average( oi_im, axis=2)
         ti_im = ti_ep[0, i, :, :, 0]
         mi_im = mi_ep[0, i, :, :, :]
          
@@ -308,20 +309,35 @@ class myImgExtractor:
         np.save( self.tdir + id + '_' + str(i) + '_oi', oi_im)
         np.save( self.tdir + id + '_' + str(i) + '_mi', mi_im)
         np.save( self.tdir + id + '_' + str(i) + '_ti', ti_im)
+        pi_im_fl = self.tdir + id + '_' + str(i) + '_pi.npy' 
         patch_fd.write(  id + '_' + str(i) + '\n')
-        '''
-        if ti_im.sum() > 0:
-          self.mylog(fn,"patch - [%d] sum[%.1f]" % (i,ti_im.sum()/(3*self.truth_pixel)))
-           
-          #stack images side by side 
-          img_hstack = np.hstack((oi_im, ti_im))
-          img_hconcat = np.concatenate((oi_im, ti_im), axis=1)
-  
-          #cv2.imshow(' img_hstack patch - [' + str(i) + ']', img_hstack.astype(np.float32)/255)
-          #cv2.waitKey(0)
-          cv2.imshow(' img_hconcat patch - [' + str(i) + ']', img_hconcat.astype(np.float32)/255)
-          cv2.waitKey(0)
-        '''
+        #'''
+        #if ti_im.sum() > 500:
+        if (ti_im.sum()/self.truth_pixel) > 50: 
+            #if os.path.exists(pi_im_fl):
+            try:
+              pi_im = np.load( self.tdir + id + '_' + str(i) + '_pi.npy')
+              pi_im = pi_im >= .5
+              pi_im = pi_im.astype(int)
+              pi_im = pi_im * self.truth_pixel
+            except FileNotFoundError:
+              #self.mylog(fn,"patch [%d] FileNotFound[%s]" % (i,pi_im_fl))
+              continue
+             
+            self.mylog(fn,"patch - [%d] oi_im[%s] ti_im[%s] pi_im[%s] pi sum[%.1f] ti sum[%.1f]" % 
+                            (i,oi_im.shape,ti_im.shape,pi_im.shape,
+                                (pi_im.sum()/self.truth_pixel),
+                                (ti_im.sum()/self.truth_pixel)))
+             
+            #stack images side by side 
+            img_hstack = np.hstack((pi_im, ti_im))
+            img_hconcat = np.concatenate((pi_im, ti_im), axis=1)
+    
+            #cv2.imshow(' img_hstack patch - [' + str(i) + ']', img_hstack.astype(np.float32)/255)
+            #cv2.waitKey(0)
+            cv2.imshow(' img_hconcat patch - [' + str(i) + ']', img_hconcat.astype(np.float32)/255)
+            cv2.waitKey(0)
+        #'''
        
       cnt += 1
        
@@ -583,7 +599,7 @@ if __name__ == "__main__":
                                      tdir='/disk1/data1/data/px_he/',
                                      patch_size=128,
                                      patch_stride=32,
-                                     truth_pixel=1
+                                     truth_pixel=255
                                     )
     img_extractor.generate_data2()
     #img_extractor.build_ground_truth('82_left.jpeg')
