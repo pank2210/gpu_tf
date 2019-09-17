@@ -236,7 +236,7 @@ class myImgExtractor:
        
       wout = (_w - 1) * _stride + ps_w  # Recalculate output shape of "extract_image_patches" including padded pixels
       hout = (_h - 1) * _stride + ps_h  # Recalculate output shape of "extract_image_patches" including padded pixels
-       
+      
       x, y = tf.meshgrid(tf.range(ps_w), tf.range(ps_h))
       x = tf.reshape(x, (1, 1, ps_h, ps_w, 1, 1))
       y = tf.reshape(y, (1, 1, ps_h, ps_w, 1, 1))
@@ -482,7 +482,7 @@ class myImgExtractor:
       print('*****************************************************************') 
       print('original image ',img.shape)
       print('extracted patches ',ep.shape)
-      #print('block shape ',bs.shape)
+      #print('block value ',bs)
       #print('reconstructed image  ',ri.shape)
       #print('stratified image  ',si.shape)
       print('*****************************************************************') 
@@ -525,7 +525,7 @@ class myImgExtractor:
        
       # Add batch dimension
       image = np.expand_dims(img, axis=0)
-      image = tf.convert(image,tf.float32)
+      image = tf.convert_to_tensor(image,tf.uint8)
   
       # set parameters
       patch_size = (self.patch_size, self.patch_size)
@@ -543,10 +543,9 @@ class myImgExtractor:
      
     # set parameters
     patch_size = (self.patch_size, self.patch_size)
-    stride = self.patch_stride
   
     # block_shape is the number of patches extracted in the x and in the y dimension
-    extracted_patches.shape = (1, block_shape[0] * block_shape[1], patch_size[0], patch_size[1], 3)
+    #extracted_patches.shape = (1, block_shape[0] * block_shape[1], patch_size[0], patch_size[1], 3)
        
     reconstructed_img, stratified_img = self.patches_to_img(extracted_patches, block_shape, stride)  # Reconstruct Image
        
@@ -563,13 +562,16 @@ class myImgExtractor:
       return False
     else:   
       # load initial image
-       
       img_path = self.imgdir + img_id 
       if os.path.exists(img_path):
         myimg1 = myimg.myImg( imageid='t1', config=self.myImg_config, path=img_path) 
       else:
-        print("Image file [%s] does not exists..." % (imgpath))
+        print("Image file [%s] does not exists..." % (img_path))
         sys.exit(-1)
+     
+      # set parameters
+      patch_size = (self.patch_size, self.patch_size)
+      stride = self.patch_stride
            
       image_org = myimg1.getImage()
       print('img_path ',img_path,' img shape ',image_org.shape)
@@ -578,24 +580,27 @@ class myImgExtractor:
       self.mylog(fn, "extracted image shape %s" % (extracted_patches.shape))
       # block_shape is the number of patches extracted in the x and in the y dimension
       # extracted_patches.shape = (1, block_shape[0] * block_shape[1], patch_size[0], patch_size[1], 3)
+      extracted_patches = tf.reshape(extracted_patches,[1, block_shape[0] * block_shape[1], patch_size[0], patch_size[1], 3])
        
-      reconstructed_img, stratified_img = self.reconstruct_img_from_patches(extracted_patches, block_shape)  # Reconstruct Image
+      reconstructed_img, stratified_img = self.reconstruct_img_from_patches(extracted_patches, block_shape, stride)  # Reconstruct Image
        
       with tf.Session() as sess:
-          ep, bs, ri, si = sess.run([extracted_patches, block_shape, reconstructed_img, stratified_img], feed_dict={input_img: image})
+          ep, bs, ri, si = sess.run([extracted_patches, block_shape, reconstructed_img])
+          #ep, bs, ri, si = sess.run([extracted_patches, block_shape, reconstructed_img, stratified_img], feed_dict={input_img: image})
           #ep, bs = sess.run([extracted_patches, block_shape], feed_dict={input_img: image})
+          #ep, bs = sess.run([extracted_patches, block_shape])
           # print(bs)
       #si = si.astype(np.int32)
        
       print('*****************************************************************') 
       print('original image ',image_org.shape)
       print('extracted patches ',ep.shape)
-      print('block shape ',bs.shape)
-      print('reconstructed image  ',ri.shape)
-      print('stratified image  ',si.shape)
+      print('block  ',bs)
+      #print('reconstructed image  ',ri.shape)
+      #print('stratified image  ',si.shape)
       print('*****************************************************************') 
       
-      #'''
+      '''
       # Show reconstructed image
       cv2.imshow('sd', ri[0, :, :, :].astype(np.float32) / 255)
       cv2.waitKey(0)
@@ -615,19 +620,20 @@ class myImgExtractor:
         im_1 = ep[0, i, :, :, :]
         cv2.imshow('sd', im_1.astype(np.float32)/255)
         cv2.waitKey(0)
-      #''' 
+      ''' 
 
 if __name__ == "__main__":
     img_path = cmd_util.get_imgpath(sys.argv[1:])
     img_extractor = myImgExtractor(id='ie23',
-                                     imgdir='/disk1/data1/data/idrid/ex/',
+                                     imgdir='/tmp/ex/images/',
                                      img_size=2048,
-                                     tdir='/disk1/data1/data/px_he/',
+                                     tdir='/tmp/px_he/',
                                      patch_size=128,
-                                     patch_stride=32,
+                                     patch_stride=128,
                                      truth_pixel=255
                                     )
-    img_extractor.generate_data2()
+    img_extractor.process_img_by_id(img_id='IDRiD_50.jpg')
+    #img_extractor.generate_data2()
     #img_extractor.build_ground_truth('82_left.jpeg')
     #img_extractor.gen_images()
     #img_extractor.process_img(img_path=img_path)
