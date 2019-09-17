@@ -58,7 +58,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_dir', '/disk1/data1/data/models/inception',
                            """Directory where to write event logs """
                            """and checkpoint.""")
-tf.app.flags.DEFINE_integer('max_steps', 100000,
+tf.app.flags.DEFINE_integer('max_steps', 500000,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_integer('num_gpus', 2,
                             """How many GPUs to use.""")
@@ -518,7 +518,7 @@ def test(model_name,test_examples):
        
       if step % 10 == 0:
         format_str = ('%s: step %d, '
-                      ' accu50[%.2f] accu[%.2f]')
+                      ' accu50[%.4f] accu[%.4f]')
         print (format_str % (datetime.now(), step,
                               accu50,test_accu_value))
        
@@ -575,6 +575,7 @@ def main(argv=None):  # pylint: disable=unused-argument
   #model_name = 'res_d44_c64_f5_p5_lr01_fc1024.cpkt-499'
   #model_name = 'res_d44_c64_f3_p3_lr01_fc1024.cpkt-499'
   
+  #model_name = 'resnet_basic_lr01.cpkt'
   model_name = 'incep_basic_lr01.cpkt'
    
   #cifar10.maybe_download_and_extract()
@@ -597,7 +598,7 @@ def main(argv=None):  # pylint: disable=unused-argument
     if tf.gfile.Exists(FLAGS.eval_dir):
       tf.gfile.DeleteRecursively(FLAGS.eval_dir)
     tf.gfile.MakeDirs(FLAGS.eval_dir)
-    test(model_name,test_examples=64)
+    test(model_name,test_examples=500)
 
 if __name__ == '__main__':
   tf.app.run()

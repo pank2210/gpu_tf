@@ -530,7 +530,7 @@ def inception(inpt, is_training=True):
         layers.append(out)
         print("*****",scope.name,out.get_shape())
     
-    #''' 
+    ''' 
     #final FC layer
     fc_layers = 2
     fc_units_increment_factor = 2
@@ -543,9 +543,9 @@ def inception(inpt, is_training=True):
         out = tf.layers.dropout( inputs=out, rate=0.5, seed=101, training=is_training)
         layers.append(out)
         print("*****",scope.name,out.get_shape())
-    #'''
+    '''
      
-    #Final Softmax Layer
+    #Final sigmoid Layer
     with tf.variable_scope('final') as scope:
         out = tf.layers.dense( layers[-1], NUM_CLASSES, activation='sigmoid', name=scope.name)
         layers.append(out)
@@ -573,11 +573,11 @@ def resnet(inpt, n, is_training=True):
     print("**inpt**",inpt.get_shape(),"***num_conv***",num_conv)
     #'''
     with tf.variable_scope('conv01') as scope:
-      conv1 = conv_layer( scope.name, layers[-1], [7, 7, inpt.get_shape()[-1], out_channels], stride=2)
+      conv1 = conv_layer( scope.name, layers[-1], [5, 5, inpt.get_shape()[-1], out_channels], stride=1)
       layers.append(conv1)
 
     with tf.variable_scope('pool01') as scope:
-      filter_ = [1,3,3,1]
+      filter_ = [1,5,5,1]
       stride_ = [1,2,2,1]
       print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
       pool0 = tf.nn.max_pool(layers[-1], ksize=filter_, strides=stride_, padding='SAME')
@@ -621,7 +621,7 @@ def resnet(inpt, n, is_training=True):
     #assert conv4.get_shape().as_list()[1:] == [8, 8, 64]
     fc_layers = 2
     fc_units_increment_factor = 2
-    out_fc_units = 1024
+    out_fc_units = 512
     for i in range(fc_layers):
       in_fc_units = out_fc_units
       out_fc_units *=  1
@@ -634,11 +634,19 @@ def resnet(inpt, n, is_training=True):
         layers.append(out)
         print("*****",scope.name,out.get_shape())
      
+    ''' 
     #assert conv4.get_shape().as_list()[1:] == [8, 8, 64]
     with tf.variable_scope('final') as scope:
         #out = KL.Dense( out, NUM_CLASSES, activation='softmax', name=scope.name)
         #out = KL.Dense( NUM_CLASSES, activation='softmax', name=scope.name)(layers[-1])
         out = tf.layers.dense( layers[-1], NUM_CLASSES, activation='softmax', name=scope.name)
+        layers.append(out)
+        print("*****",scope.name,out.get_shape())
+    ''' 
+     
+    #Final sigmoid Layer
+    with tf.variable_scope('final') as scope:
+        out = tf.layers.dense( layers[-1], NUM_CLASSES, activation='sigmoid', name=scope.name)
         layers.append(out)
         print("*****",scope.name,out.get_shape())
      
