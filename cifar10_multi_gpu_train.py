@@ -58,7 +58,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_dir', '/disk1/data1/data/models/inception',
                            """Directory where to write event logs """
                            """and checkpoint.""")
-tf.app.flags.DEFINE_integer('max_steps', 500000,
+tf.app.flags.DEFINE_integer('max_steps', 15000,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_integer('num_gpus', 2,
                             """How many GPUs to use.""")
@@ -365,7 +365,7 @@ def train(model_name='mymodel.ckpt'):
         pt75_accu = 1 - np.abs(pt75 - test_label_value).mean()
          
         format_str = ('%s: step %d, loss=%.2f (%.1f examples/sec; %.3f '
-                      'sec/batch) accu[%.2f] accu75[%.2f]')
+                      'sec/batch) accu[%.3f] accu75[%.2f]')
         print (format_str % (datetime.now(), step, loss_value,
                              examples_per_sec, sec_per_batch, 
                              pt50_accu,pt75_accu))
@@ -395,6 +395,104 @@ def train(model_name='mymodel.ckpt'):
         checkpoint_path = os.path.join(FLAGS.train_dir, model_name)
         saver.save(sess, checkpoint_path, global_step=step)
 
+def test2(model_name,test_examples):
+  """Train CIFAR-10 for a number of steps."""
+  with tf.Graph().as_default(), tf.device('/cpu:0'):
+    tf.random.set_random_seed(2001)
+    data = du.Data(jfilepath='config/config.json')
+    data.set_batch_size( FLAGS.batch_size)
+    data.set_no_classes( FLAGS.no_classes)
+    test_out_file = FLAGS.train_dir + '/' + model_name + '_df.csv'
+     
+    #training dataset
+    data.set_data_file('test1')
+    _test_dataset, _test_iterator = data.get_iterator2()
+    test_init_op = _test_iterator.make_initializer(_test_dataset)
+     
+    tower_grads = []
+    tower_ids = []
+    tower_labels = []
+    tower_probs = []
+    tower_accu = []
+    with tf.variable_scope(tf.get_variable_scope(),reuse=tf.AUTO_REUSE):
+      for i in xrange(FLAGS.num_gpus):
+        with tf.device('/gpu:%d' % i):
+          with tf.name_scope('%s_%d' % (cifar10.TOWER_NAME, i)) as scope:
+            #validation/Test set 
+            loss_type = 'test_losses'
+            test_image_ids, test_image_batch, test_label_batch = _test_iterator.get_next()
+            test_accu, test_probs = tower_loss(scope, test_image_batch, test_label_batch, loss_type, test_image_ids)
+            tower_ids.append( test_image_ids)
+            tower_labels.append( test_label_batch)
+            tower_probs.append( test_probs)
+            tower_accu.append( test_accu)
+    # Build test op for key variable which needs to be used to execute graph
+    ids = tf.stack( tower_ids) 
+    _probs = tf.stack( tower_probs) 
+    labels = tf.stack( tower_labels) 
+    labels = tf.reshape( labels, [-1]) 
+    probs = tf.stack( tower_probs) 
+    probs = tf.reshape( probs, [-1]) 
+    accu = tf.reduce_mean(tower_accu)
+     
+    # Build an initialization operation to run below.
+    local_var_init = tf.local_variables_initializer()
+    #init = tf.global_variables_initializer()
+     
+    # Start running operations on the Graph. allow_soft_placement must be set to
+    # True to build towers on GPU, as some of the ops do not have GPU
+    # implementations.
+    sess = tf.Session(config=tf.ConfigProto(
+        allow_soft_placement=True,
+        log_device_placement=FLAGS.log_device_placement))
+     
+    #saver = tf.train.Saver(variables_to_restore)
+    saver = tf.train.Saver()
+     
+    saver.restore(sess, FLAGS.checkpoint_dir + '/' + model_name)
+    #print("*****ckpt[%s] global_step[%s]" % (ckpt.model_checkpoint_path,global_step))
+     
+    sess.run(local_var_init)
+    sess.run(test_init_op)
+     
+    a_image_ids = []
+    a_preds = []
+    a_probs = []
+    a_labels = []
+     
+    for step in xrange(test_examples):
+      start_time = time.time()
+      test_ids, test_accu_value, test_label_value, test_probs_value, _test_probs_value = sess.run([ids, accu, labels, probs, _probs])
+      duration = time.time() - start_time
+      a_probs.extend(test_probs_value)
+      a_image_ids.extend(test_ids)
+      #a_preds.append(test_preds_value)
+      a_labels.extend(test_label_value)
+       
+      #save results as binary image 
+      data.save_results(test_ids,_test_probs_value) 
+       
+      #caculate accuracy with new methods. 
+      pt50 = test_probs_value 
+      pt50[pt50 >= .50 ] = 1.
+      pt50[pt50 < .50 ] = 0.
+      accu50 = 1 - np.abs(pt50 - test_label_value).mean()
+       
+      #assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
+       
+      if step % 10 == 0:
+        format_str = ('%s: step %d, '
+                      ' accu50[%.4f] accu[%.4f]')
+        print (format_str % (datetime.now(), step,
+                              accu50,test_accu_value))
+       
+    pred_df = pd.DataFrame(list(zip(a_labels, a_probs)), 
+               columns =['label', 'prob']) 
+    pred_df.to_csv( test_out_file, index=False)
+         
+    #o_fd.close()
+    #print_groups(test_out_file)
+  
 
 def test(model_name,test_examples):
   """Train CIFAR-10 for a number of steps."""
@@ -576,7 +674,8 @@ def main(argv=None):  # pylint: disable=unused-argument
   #model_name = 'res_d44_c64_f3_p3_lr01_fc1024.cpkt-499'
   
   #model_name = 'resnet_basic_lr01.cpkt'
-  model_name = 'incep_basic_lr01.cpkt'
+  #model_name = 'incep_basic_lr01.cpkt'
+  model_name = 'incep_wofc_lr01.cpkt'
    
   #cifar10.maybe_download_and_extract()
   if len(argv) > 0:
@@ -595,10 +694,7 @@ def main(argv=None):  # pylint: disable=unused-argument
     #test(model_name,test_examples=100)
   else:
     model_name = model_name + '-' + steps
-    if tf.gfile.Exists(FLAGS.eval_dir):
-      tf.gfile.DeleteRecursively(FLAGS.eval_dir)
-    tf.gfile.MakeDirs(FLAGS.eval_dir)
-    test(model_name,test_examples=500)
+    test2(model_name,test_examples=36)
 
 if __name__ == '__main__':
   tf.app.run()

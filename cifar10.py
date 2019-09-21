@@ -335,20 +335,19 @@ def inception(inpt, is_training=True):
       layers.append(out) #2
       print("*****",scope.name,"**out**",out.get_shape())
      
-    #''' 
-    out_channels = 128
+    out_channels = 192
     with tf.variable_scope('1b') as scope:
-      out = conv_layer( scope.name, layers[-1], [5, 5, layers[-1].get_shape()[-1], out_channels], stride=2)
+      out = conv_layer( scope.name, layers[-1], [3, 3, layers[-1].get_shape()[-1], out_channels], stride=1)
       layers.append(out) #3
-      filter_ = [1,5,5,1]
+      filter_ = [1,3,3,1]
       stride_ = [1,2,2,1]
       print("*****",scope.name,"**maxpool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
-      #out = maxpool_layer(layers[-1], filter_, stride_, padding_='SAME')
-      out = avgpool_layer(layers[-1], filter_, stride_, padding_='SAME')
+      out = maxpool_layer(layers[-1], filter_, stride_, padding_='SAME')
+      #out = avgpool_layer(layers[-1], filter_, stride_, padding_='SAME')
       layers.append(out) #4
       print("*****",scope.name,"**out**",out.get_shape())
-    #''' 
      
+    ''' 
     out_channels = 192
     with tf.variable_scope('2a') as scope:
       out = conv_layer( scope.name, layers[-1], [3, 3, layers[-1].get_shape()[-1], out_channels], stride=1)
@@ -360,6 +359,7 @@ def inception(inpt, is_training=True):
       #out = avgpool_layer(layers[-1], filter_, stride_, padding_='SAME')
       layers.append(out) #6
       print("*****",scope.name,"**out**",out.get_shape())
+    ''' 
      
     ''' 
     #Layer 1a out channels=256 
@@ -397,7 +397,6 @@ def inception(inpt, is_training=True):
                              pool_stride=1)
       layers.append(out) #7
      
-    #Layer 4a out channels=512 
     #Layer 3b out channels=480 
     output_channels = [128,128,192,32,96,64] 
     with tf.variable_scope('3b') as scope:
@@ -515,7 +514,7 @@ def inception(inpt, is_training=True):
     #AvgGlobal pool layer 
     with tf.variable_scope('avgglobalpool5b') as scope:
       #filter_ = [1,3,3,1]
-      filter_ = [3,3]
+      filter_ = [7,7]
       stride_ = [1,1]
       print("*****",scope.name,"**avgglobalool layer**",layers[-1].get_shape(),"**kernel**",filter_,"**stride**",stride_)
       out = gavgpool_layer(layers[-1], filter_, stride_, padding_='SAME')
@@ -526,7 +525,7 @@ def inception(inpt, is_training=True):
     #Flatten layer
     with tf.variable_scope('flatten_and_dropout') as scope:
         out = tf.layers.flatten( layers[-1], name=scope.name)
-        #out = tf.layers.dropout( inputs=out, rate=0.5, seed=101, training=is_training)
+        out = tf.layers.dropout( inputs=out, rate=0.4, seed=101, training=is_training)
         layers.append(out)
         print("*****",scope.name,out.get_shape())
     

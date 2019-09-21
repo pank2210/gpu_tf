@@ -814,16 +814,21 @@ class Data(object):
     n_img_h = self.img_heigth
     
     #loop in through dataframe. 
-    for image_id in image_ids:
-       
-      #self.log( mname, "cnt[{}] processing image_id[{}]".format(cnt,image_id), level=3)
-       
-      imgpath = self.img_dir_path + image_id + '_pi' + self.img_filename_ext #recreate original file URI
-       
-      img = np.reshape(probs[cnt],(n_img_w,n_img_h)) #recreate binary image of original size from flatten array
-      np.save(imgpath,img) #save predicted results as binary image
+    #print("image_ids[{}] probs[{}]".format(image_ids.shape,probs.shape))
+    for batch_cnt in range(image_ids.shape[0]):
+      _ids = image_ids[batch_cnt]
+      _probs = probs[batch_cnt]
+      cnt = 0
+      for image_id in _ids:
          
-      cnt += 1 #scroll through batch of results.
+        #self.log( mname, "cnt[{}] processing image_id[{}]".format(cnt,image_id), level=3)
+         
+        imgpath = self.img_dir_path + str(image_id,'utf-8') + '_pi' + self.img_filename_ext #recreate original file URI
+         
+        img = np.reshape(_probs[cnt],(n_img_w,n_img_h)) #recreate binary image of original size from flatten array
+        np.save(imgpath,img) #save predicted results as binary image
+           
+        cnt += 1 #scroll through batch of results.
      
   def data_generator(self):
     #initialize all variables... 
@@ -878,7 +883,7 @@ class Data(object):
       #y_buf = keras.utils.to_categorical( label, self.no_classes)
       #print("XXXXXXXXXXXXXX",image_id,label,y_buf,y_buf.shape)
        
-      #x_buf = x_buf.astype('float32') / 255
+      #y_buf = y_buf.astype('float32') / 255
       x_buf = x_buf.astype('float32')
       x_buf /= 255.0
       x_buf_min = np.min(x_buf)
@@ -896,7 +901,7 @@ class Data(object):
                  (tf.TensorShape(None),tf.TensorShape([self.img_width,self.img_heigth,self.channels]),
                                tf.TensorShape([self.img_width * self.img_heigth])))
     dataset = dataset.batch(self.batch_size)
-    if self.data_file != 'test':
+    if self.data_file.startswith('train'):
        dataset = dataset.shuffle(buffer_size=self.pre_fetch*self.batch_size,seed=self.batch_random_seed)
     _iterator = dataset.make_initializable_iterator()
     #_iterator = dataset.make_one_shot_iterator()

@@ -152,8 +152,6 @@ class myImgExtractor:
      
      #initialize truth image data
      truth_img = myimg2.getImage()
-     #set truth_img with 1's and 0's based on pixel
-     #truth_img[truth_img>0] = 1.
      #self.mylog(fn,"truth image shape [%d %d %d]" % (truth_img.shape))
      
      #return patch of DF for given img_id
@@ -625,15 +623,15 @@ class myImgExtractor:
 if __name__ == "__main__":
     img_path = cmd_util.get_imgpath(sys.argv[1:])
     img_extractor = myImgExtractor(id='ie23',
-                                     imgdir='/tmp/ex/images/',
+                                     imgdir='/disk1/data1/data/idrid/ex/',
                                      img_size=2048,
-                                     tdir='/tmp/px_he/',
+                                     tdir='/disk1/data1/data/px_he1/',
                                      patch_size=128,
-                                     patch_stride=128,
+                                     patch_stride=128, #for generating train image use stride=32 else for test use patch_size
                                      truth_pixel=255
                                     )
-    img_extractor.process_img_by_id(img_id='IDRiD_50.jpg')
-    #img_extractor.generate_data2()
+    #img_extractor.process_img_by_id(img_id='IDRiD_50.jpg')
+    img_extractor.generate_data2()
     #img_extractor.build_ground_truth('82_left.jpeg')
     #img_extractor.gen_images()
     #img_extractor.process_img(img_path=img_path)
