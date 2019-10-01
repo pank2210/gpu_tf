@@ -58,7 +58,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_dir', '/disk1/data1/data/models/inception',
                            """Directory where to write event logs """
                            """and checkpoint.""")
-tf.app.flags.DEFINE_integer('max_steps', 15000,
+tf.app.flags.DEFINE_integer('max_steps', 16000,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_integer('num_gpus', 2,
                             """How many GPUs to use.""")
@@ -89,7 +89,8 @@ def tower_loss( scope, images, labels, loss_type='losses', image_ids=None):
   if loss_type != 'losses':
     is_training = False
   #logits = cifar10.resnet(inpt=images,n=44,is_training=is_training)
-  logits = cifar10.inception(inpt=images,is_training=is_training)
+  #logits = cifar10.inception(inpt=images,is_training=is_training)
+  logits = cifar10.inceptionV3(inputs=images,is_training=is_training)
   print("logits ############",logits.get_shape())
 
   # Build the portion of the Graph calculating the losses. Note that we will
@@ -158,7 +159,7 @@ def average_gradients(tower_grads):
       #print(i,j,"grad_and_vars ############ g ",g.get_shape())
       expanded_g = tf.expand_dims(g, 0)
       #print(i,j,"grad_and_vars ############ expanded_g ",expanded_g.get_shape())
-
+       
       # Append on a 'tower' dimension which we will average over below.
       grads.append(expanded_g)
       j += 1
@@ -365,7 +366,7 @@ def train(model_name='mymodel.ckpt'):
         pt75_accu = 1 - np.abs(pt75 - test_label_value).mean()
          
         format_str = ('%s: step %d, loss=%.2f (%.1f examples/sec; %.3f '
-                      'sec/batch) accu[%.3f] accu75[%.2f]')
+                      'sec/batch) accu[%.5f] accu75[%.5f]')
         print (format_str % (datetime.now(), step, loss_value,
                              examples_per_sec, sec_per_batch, 
                              pt50_accu,pt75_accu))
@@ -405,7 +406,7 @@ def test2(model_name,test_examples):
     test_out_file = FLAGS.train_dir + '/' + model_name + '_df.csv'
      
     #training dataset
-    data.set_data_file('test1')
+    data.set_data_file('test')
     _test_dataset, _test_iterator = data.get_iterator2()
     test_init_op = _test_iterator.make_initializer(_test_dataset)
      
@@ -666,16 +667,9 @@ def main(argv=None):  # pylint: disable=unused-argument
   mode = 'test'
   steps = '499'
    
-  #model_name = 'res_d32_c32.cpkt'
-  #model_name = 'res_d44_c64_f7_p5_lr01_fc1024.cpkt-499'
-  #model_name = 'dr1_res_d44_c64_f5_p5_lr01_fc1024.cpkt'
-  #model_name = 'dr1_res_d44_c64_f5_p5_lr01_fc1024.cpkt-99'
-  #model_name = 'res_d44_c64_f5_p5_lr01_fc1024.cpkt-499'
-  #model_name = 'res_d44_c64_f3_p3_lr01_fc1024.cpkt-499'
-  
   #model_name = 'resnet_basic_lr01.cpkt'
   #model_name = 'incep_basic_lr01.cpkt'
-  model_name = 'incep_wofc_lr01.cpkt'
+  model_name = 'incep_v3_he.cpkt'
    
   #cifar10.maybe_download_and_extract()
   if len(argv) > 0:
@@ -694,7 +688,7 @@ def main(argv=None):  # pylint: disable=unused-argument
     #test(model_name,test_examples=100)
   else:
     model_name = model_name + '-' + steps
-    test2(model_name,test_examples=36)
+    test2(model_name,test_examples=71)
 
 if __name__ == '__main__':
   tf.app.run()

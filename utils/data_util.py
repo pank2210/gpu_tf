@@ -1,4 +1,3 @@
-import os
 
 import numpy as np
 import pandas as pd
@@ -63,12 +62,14 @@ class Data(object):
     self.log( mname, "random_seed[{}]".format(self.random_seed), level=3)
      
     self.img_dir_path = self.config.getElementValue(elem_path='/img/img_dir_path')
+    self.gt_dir_path = self.config.getElementValue(elem_path='/img/gt_dir_path')
     self.img_croped_dir_path = self.config.getElementValue(elem_path='/img/img_croped_dir_path')
     self.img_filename_ext = self.config.getElementValue(elem_path='/img/img_filename_ext')
     self.img_width = self.config.getElementValue(elem_path='/img/img_width')
     self.img_heigth = self.config.getElementValue(elem_path='/img/img_heigth')
      
     self.log( mname, "Images will be read from [{}]".format(self.img_dir_path), level=3)
+    self.log( mname, "Ground Truth Images will be read from [{}]".format(self.gt_dir_path), level=3)
     self.log( mname, "Image file extension [{}]".format(self.img_filename_ext), level=3)
     self.log( mname, "Image width [{}] heigth [{}]".format(self.img_width,self.img_heigth), level=3)
      
@@ -857,8 +858,8 @@ class Data(object):
       #image_id = line[0] 
       #label_id = line[1] 
        
-      imgpath = self.img_dir_path + image_id + '_oi' + self.img_filename_ext #recreate original file URI
-      labelpath = self.img_dir_path + image_id + '_ti' + self.img_filename_ext  #recreate target ground truth
+      imgpath = self.img_dir_path + image_id + self.img_filename_ext #recreate original file URI
+      labelpath = self.gt_dir_path + image_id + self.img_filename_ext  #recreate target ground truth
        
       if os.path.exists(imgpath) and os.path.exists(labelpath):
         img = np.load(imgpath) #Load original image

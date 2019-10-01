@@ -25,6 +25,7 @@ class myImgExtractor:
     self.imgdir = imgdir
     self.tdir = tdir
     self.img_size = img_size
+    self.img_ext = '.jpg'
     self.img_config_fl = '../config/img_conf.csv' #file holding all marked masked/regions of images
     self.mask_df = None #DF to read image mask params
     
@@ -129,8 +130,8 @@ class myImgExtractor:
       
      #self.mylog(fn,"Generating ground truth...")
      
-     img_path = self.imgdir + 'images/' + img_id + '.jpg'
-     mask_path = self.imgdir + 'gt/' + img_id + '_HE.jpg'
+     img_path = self.imgdir + 'images/' + img_id + self.img_ext
+     mask_path = self.imgdir + 'gt/' + img_id + '_HE' + self.img_ext
      myimg1 = None
      #self.mylog(fn,"processing img_id[%s] img_path[%s]..." % (img_id,img_path))
       
@@ -152,6 +153,7 @@ class myImgExtractor:
      
      #initialize truth image data
      truth_img = myimg2.getImage()
+     #print("**********",truth_img.shape,type(truth_img.shape),type(truth_img))
      #self.mylog(fn,"truth image shape [%d %d %d]" % (truth_img.shape))
      
      #return patch of DF for given img_id
@@ -310,8 +312,8 @@ class myImgExtractor:
         pi_im_fl = self.tdir + id + '_' + str(i) + '_pi.npy' 
         patch_fd.write(  id + '_' + str(i) + '\n')
         #'''
-        #if ti_im.sum() > 500:
-        if (ti_im.sum()/self.truth_pixel) > 50: 
+        #if ti_im.sum() > 20:
+        if (ti_im.sum()/self.truth_pixel) > 20: 
             #if os.path.exists(pi_im_fl):
             try:
               pi_im = np.load( self.tdir + id + '_' + str(i) + '_pi.npy')
@@ -349,13 +351,18 @@ class myImgExtractor:
     _batch_size = 1 #batch size to process images
      
     #open file for writing DF for patches
-    patch_fd = open( self.tdir + out_fl, 'w')
+    train_fd = open( self.tdir + 'train_df.csv', 'w')
+    val_fd = open( self.tdir + 'val_df.csv', 'w')
+    test_fd = open( self.tdir + 'test_df.csv', 'w')
+    imgextract_fd = open( self.tdir + 'imgextract_df.csv', 'w')
      
     #get img_id's for which this process nees to be run...
-    img_ids = self.mask_df.img_id.unique()
+    #img_ids = self.mask_df.img_id.unique()
      
     cnt = 0 
-    for img_id in img_ids:
+    for i,rec in self.mask_df.iterrows():
+      img_id = rec.img_id
+      rec_type = rec.rec_type
       #if cnt > 2:
       #  break
       self.mylog(fn,"Generating img_id[%s]" % (img_id))
@@ -367,20 +374,47 @@ class myImgExtractor:
         continue
       #mi = self.reshape_img( self.img_size, self.img_size, mi)
       #cv2.imshow(' masked image [' + img_ids[6] + ']', mi.astype(np.float32)/255)
-      ti_ep = self.get_img_patches(img=ti)
       oi_ep = self.get_img_patches(img=oi)
+      ti_ep = self.get_img_patches(img=ti)
        
+      blank_patch_threshold = 10 #no of blank images allowed from given to pass to model 
+      blank_patch_cnt = 0 #counter to count how many total black images (no non-zero pixel in patch) 
       #Show extracted patches images
       for i in range(oi_ep.shape[1]):
         oi_im = oi_ep[0, i, :, :, :]
         ti_im = ti_ep[0, i, :, :, 0]
+        
+        #check if patch image is blank
+        if oi_im.sum()  == 0:
+           blank_patch_cnt += 1 
+           blank_patch_flag = True
+        else:
+           blank_patch_flag = False
          
-        #save all files.
-        #cv2.imwrite( self.tdir + id + '_mi_' + str(i) + '.jpeg', mi_im)
-        #cv2.imwrite( self.tdir + id + '_oi_' + str(i) + '.jpeg', oi_im)
-        np.save( self.tdir + id + '_' + str(i) + '_oi', oi_im)
-        np.save( self.tdir + id + '_' + str(i) + '_ti', ti_im)
-        patch_fd.write(  id + '_' + str(i) + '\n')
+        #skip blank image processing if there counter cross our threshold limit
+        if blank_patch_flag and blank_patch_cnt > blank_patch_threshold: 
+           continue
+        else:
+           #save all files.
+           #oi_fl = self.tdir + id + '_' + str(i) + '_oi'
+           #oi_fl = self.tdir + id + '_' + str(i) + '_oi'
+           oi_fl = self.tdir + 'images/' + id + '_' + str(i)
+           ti_fl = self.tdir + 'gt/' + id + '_' + str(i)
+           np.save( oi_fl, oi_im)
+           np.save( ti_fl, ti_im)
+           if rec_type == 'val':
+              val_fd.write(  id + '_' + str(i) + '\n')
+           elif rec_type == 'test':
+              test_fd.write(  id + '_' + str(i) + '\n')
+           else:
+              train_fd.write(  id + '_' + str(i) + '\n')
+            
+           imgextract_fd.write(  id \
+                               + ',' + str(i) \
+                               + ',' + rec_type \
+                               + ',' + str(ti_im.sum()) \
+                               #+ ',' + str(ti_im.size()) \
+                               + '\n' )
         '''
         if ti_im.sum() > 0:
           self.mylog(fn,"patch - [%d] sum[%.1f]" % (i,ti_im.sum()/(3*self.truth_pixel)))
@@ -457,6 +491,11 @@ class myImgExtractor:
        
       # Add batch dimension
       image = np.expand_dims(img, axis=0)
+      '''
+      print("*******",image.shape)
+      print("*******",self.patch_size)
+      print("*******",self.patch_stride)
+      '''
   
       # set parameters
       patch_size = (self.patch_size, self.patch_size)
@@ -624,10 +663,10 @@ if __name__ == "__main__":
     img_path = cmd_util.get_imgpath(sys.argv[1:])
     img_extractor = myImgExtractor(id='ie23',
                                      imgdir='/disk1/data1/data/idrid/ex/',
-                                     img_size=2048,
-                                     tdir='/disk1/data1/data/px_he1/',
+                                     img_size=2560,
+                                     tdir='/disk1/data1/data/px_he/',
                                      patch_size=128,
-                                     patch_stride=128, #for generating train image use stride=32 else for test use patch_size
+                                     patch_stride=32, #for generating train image use stride=32 else for test use patch_size
                                      truth_pixel=255
                                     )
     #img_extractor.process_img_by_id(img_id='IDRiD_50.jpg')

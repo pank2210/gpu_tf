@@ -9,7 +9,8 @@
         "img_processing_capacity": 0,
         "img_width": 128,
         "img_heigth": 128,
-        "img_dir_path": "/disk1/data1/data/px_he/",
+        "img_dir_path": "/disk1/data1/data/px_he/images/",
+        "gt_dir_path": "/disk1/data1/data/px_he/gt/",
         "img_croped_dir_path": "/disk1/data1/data/patches/",
         "img_filename_ext": ".npy"
      },

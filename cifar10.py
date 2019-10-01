@@ -158,6 +158,8 @@ def _variable_with_weight_decay(name, shape, stddev, wd):
   if wd is not None:
     weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')
     tf.add_to_collection('losses', weight_decay)
+  #print("@@@@@@",name,"@@@",shape,"@@@",stddev,"@@@",wd,"@@@",var)
+   
   return var
 
 
@@ -227,9 +229,8 @@ def gavgpool_layer( inpt, filter_, stride_, padding_='SAME'):
 def avgpool_layer( inpt, filter_, stride_, padding_='SAME'):
     return tf.nn.avg_pool(inpt, ksize=filter_, strides=stride_, padding=padding_)
 
-def conv_layer( _scope, inpt, filter_shape, stride, stddev=5e-2, wd=0.04):
-  with tf.variable_scope(_scope) as scope:
-    print("*****",_scope,"**conv layer**",inpt.get_shape(),"**filter**",filter_shape,"**stride**",stride)
+def conv_layer_no_scope( inpt, filter_shape, stride, padding_='SAME', stddev=5e-2, wd=0.04):
+    #print("*****",_scope,"**conv layer**",inpt.get_shape(),"**filter**",filter_shape,"**stride**",stride)
     out_channels = filter_shape[3]
     n = filter_shape[0] * filter_shape[1] * out_channels
     
@@ -237,7 +238,28 @@ def conv_layer( _scope, inpt, filter_shape, stride, stddev=5e-2, wd=0.04):
                                          shape=filter_shape,
                                          stddev=np.sqrt(2.0/n),
                                          wd=wd)
-    conv = tf.nn.conv2d(inpt, kernel, [1, stride, stride, 1], padding='SAME')
+    conv = tf.nn.conv2d(inpt, kernel, [1, stride, stride, 1], padding=padding_)
+    biases = _variable_on_cpu('biases', [out_channels], tf.constant_initializer(0.1))
+    conv = tf.nn.bias_add(conv, biases)
+    #conv = BatchNorm(name=scope.name)(conv, training=False)
+    conv = tf.layers.batch_normalization(conv)
+    conv = tf.nn.relu( conv)
+     
+    _activation_summary(conv)
+     
+    return conv
+
+def conv_layer( _scope, inpt, filter_shape, stride, padding_='SAME', stddev=5e-2, wd=0.04):
+  with tf.variable_scope(_scope) as scope:
+    #print("*****",_scope,"**conv layer**",inpt.get_shape(),"**filter**",filter_shape,"**stride**",stride)
+    out_channels = filter_shape[3]
+    n = filter_shape[0] * filter_shape[1] * out_channels
+    
+    kernel = _variable_with_weight_decay('weights',
+                                         shape=filter_shape,
+                                         stddev=np.sqrt(2.0/n),
+                                         wd=wd)
+    conv = tf.nn.conv2d(inpt, kernel, [1, stride, stride, 1], padding=padding_)
     biases = _variable_on_cpu('biases', [out_channels], tf.constant_initializer(0.1))
     conv = tf.nn.bias_add(conv, biases)
     #conv = BatchNorm(name=scope.name)(conv, training=False)
@@ -524,8 +546,8 @@ def inception(inpt, is_training=True):
      
     #Flatten layer
     with tf.variable_scope('flatten_and_dropout') as scope:
-        out = tf.layers.flatten( layers[-1], name=scope.name)
-        out = tf.layers.dropout( inputs=out, rate=0.4, seed=101, training=is_training)
+        out = tf.layers.dropout( inputs=layers[-1], rate=0.5, seed=101, training=is_training)
+        out = tf.layers.flatten( out, name=scope.name)
         layers.append(out)
         print("*****",scope.name,out.get_shape())
     
@@ -664,6 +686,8 @@ def loss(logits, labels, loss_type='losses', threshold=.5):
     Loss tensor of type float.
   """
   # Calculate the average cross entropy loss across the batch.
+  #epsilon = tf.constant(value=1e-10) #, shape=logits.get_shape())
+  #logits = logits + epsilon
   labels = tf.cast(labels, tf.float32)
   print("labels ================",labels.get_shape())
   print("logits ================",logits.get_shape())
@@ -673,6 +697,7 @@ def loss(logits, labels, loss_type='losses', threshold=.5):
       labels=labels, logits=logits, name='cross_entropy_per_example')
   print("cross_entropy","================",cross_entropy.get_shape())
   cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
+  #assert not tf.is_nan(cross_entropy_mean), 'Model diverged with cost or cross_entropy_mean = NaN'
   print("cross_entropy_mean","================",cross_entropy_mean.get_shape())
    
   if loss_type != 'losses':
@@ -801,3 +826,455 @@ def maybe_download_and_extract():
   extracted_dir_path = os.path.join(dest_directory, 'cifar-10-batches-bin')
   if not os.path.exists(extracted_dir_path):
     tarfile.open(filepath, 'r:gz').extractall(dest_directory)
+
+'''
+  Created wrapper for all individual array ops function to satisfy callf rom inception V3.
+'''
+def maxpool_layer_w1( inpt, filter_, stride=1, padding='SAME', scope=None):
+    if scope:
+       with tf.variable_scope(scope) as scope:
+          return maxpool_layer( inpt, [1,filter_[0],filter_[1],1], [1,stride,stride,1], padding_=padding)
+    else:
+       return maxpool_layer( inpt, [1,filter_[0],filter_[1],1], [1,stride,stride,1], padding_=padding)
+
+def gavgpool_layer_w1( inpt, filter_, stride=1, padding='SAME', scope=None):
+    if scope:
+       with tf.variable_scope(scope) as scope:
+          return gavgpool_layer( inpt, [1,filter_[0],filter_[1],1], [1,stride,stride,1], padding_=padding)
+    else:
+       return gavgpool_layer( inpt, [1,filter_[0],filter_[1],1], [1,stride,stride,1], padding_=padding)
+
+def avgpool_layer_w1( inpt, filter_, stride=1, padding='SAME', scope=None):
+    if scope:
+       with tf.variable_scope(scope) as scope:
+          return avgpool_layer( inpt, [1,filter_[0],filter_[1],1], [1,stride,stride,1], padding_=padding)
+    else:
+       return avgpool_layer( inpt, [1,filter_[0],filter_[1],1], [1,stride,stride,1], padding_=padding)
+
+def conv_layer_w1( inpt, out_channels, filter, stride=1, padding='SAME', scope=None):
+    if scope:
+       return conv_layer( scope, inpt, [filter[0], filter[1], inpt.get_shape()[-1], out_channels], stride, padding_=padding)
+    else:
+       return conv_layer_no_scope( inpt, [filter[0], filter[1], inpt.get_shape()[-1], out_channels], stride, padding_=padding)
+
+# Inception Net v3
+def inceptionV3(inputs, is_training=True):
+    end_points = {}
+   
+    print("**inputs**",inputs.get_shape(),"***")
+    
+    with tf.variable_scope('inception_v3') as scope:
+        # 299 x 299 x 3
+        end_points['conv0'] = conv_layer_w1(inputs, 32, [3, 3], stride=2,
+                                         scope='conv0')
+        # 149 x 149 x 32
+        end_points['conv1'] = conv_layer_w1(end_points['conv0'], 32, [3, 3],
+                                         scope='conv1')
+        # 147 x 147 x 32
+        end_points['conv2'] = conv_layer_w1(end_points['conv1'], 64, [3, 3],
+                                         padding='SAME', scope='conv2')
+        # 147 x 147 x 64
+        end_points['pool1'] = maxpool_layer_w1(end_points['conv2'], [3, 3],
+                                           stride=2, scope='pool1')
+        # 73 x 73 x 64
+        end_points['conv3'] = conv_layer_w1(end_points['pool1'], 80, [1, 1],
+                                         scope='conv3')
+        # 73 x 73 x 80.
+        end_points['conv4'] = conv_layer_w1(end_points['conv3'], 192, [3, 3],
+                                         scope='conv4')
+        # 71 x 71 x 192.
+        end_points['pool2'] = maxpool_layer_w1(end_points['conv4'], [3, 3],
+                                           stride=2, scope='pool2')
+        net = end_points['pool2']
+       
+        # Inception blocks
+        # mixed: 35 x 35 x 256.
+        #with tf.variable_scope('mixed_35x35x256a',reuse=tf.AUTO_REUSE):
+        with tf.variable_scope('mixed_35x35x256a'):
+          with tf.variable_scope('branch1x1'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch1x1 = conv_layer_w1(net, 64, [1, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            _scope += str(_scope_cnt)
+          with tf.variable_scope('branch5x5'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch5x5 = conv_layer_w1(net, 48, [1, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch5x5 = conv_layer_w1(branch5x5, 64, [5, 5], scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch3x3dbl'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch3x3dbl = conv_layer_w1(net, 64, [1, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch3x3dbl = conv_layer_w1(branch3x3dbl, 96, [3, 3], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch3x3dbl = conv_layer_w1(branch3x3dbl, 96, [3, 3], scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch_pool'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch_pool = avgpool_layer_w1(net, [3, 3])
+            branch_pool = conv_layer_w1(branch_pool, 32, [1, 1], scope=_scope + str(_scope_cnt))
+          net = tf.concat(axis=3, values=[branch1x1, branch5x5, branch3x3dbl, branch_pool])
+          end_points['mixed_35x35x256a'] = net
+         
+        # mixed_1: 35 x 35 x 288.
+        with tf.variable_scope('mixed_35x35x288a'):
+          with tf.variable_scope('branch1x1'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch1x1 = conv_layer_w1(net, 64, [1, 1], scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch5x5'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch5x5 = conv_layer_w1(net, 48, [1, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch5x5 = conv_layer_w1(branch5x5, 64, [5, 5], scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch3x3dbl'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch3x3dbl = conv_layer_w1(net, 64, [1, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch3x3dbl = conv_layer_w1(branch3x3dbl, 96, [3, 3], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch3x3dbl = conv_layer_w1(branch3x3dbl, 96, [3, 3], scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch_pool'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch_pool = avgpool_layer_w1(net, [3, 3])
+            branch_pool = conv_layer_w1(branch_pool, 64, [1, 1], scope=_scope + str(_scope_cnt))
+          net = tf.concat(axis=3, values=[branch1x1, branch5x5, branch3x3dbl, branch_pool])
+          end_points['mixed_35x35x288a'] = net
+         
+        # mixed_2: 35 x 35 x 288.
+        with tf.variable_scope('mixed_35x35x288b'):
+          with tf.variable_scope('branch1x1'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch1x1 = conv_layer_w1(net, 64, [1, 1], scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch5x5'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch5x5 = conv_layer_w1(net, 48, [1, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch5x5 = conv_layer_w1(branch5x5, 64, [5, 5], scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch3x3dbl'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch3x3dbl = conv_layer_w1(net, 64, [1, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch3x3dbl = conv_layer_w1(branch3x3dbl, 96, [3, 3], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch3x3dbl = conv_layer_w1(branch3x3dbl, 96, [3, 3], scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch_pool'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch_pool = avgpool_layer_w1(net, [3, 3])
+            branch_pool = conv_layer_w1(branch_pool, 64, [1, 1], scope=_scope + str(_scope_cnt))
+          net = tf.concat(axis=3, values=[branch1x1, branch5x5, branch3x3dbl, branch_pool])
+          end_points['mixed_35x35x288b'] = net
+         
+        # mixed_3: 17 x 17 x 768.
+        with tf.variable_scope('mixed_17x17x768a'):
+          with tf.variable_scope('branch3x3'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch3x3 = conv_layer_w1(net, 384, [3, 3], stride=2, padding='VALID', scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch3x3dbl'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch3x3dbl = conv_layer_w1(net, 64, [1, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch3x3dbl = conv_layer_w1(branch3x3dbl, 96, [3, 3])
+            _scope_cnt += 1
+            branch3x3dbl = conv_layer_w1(branch3x3dbl, 96, [3, 3],
+                                      stride=2, padding='VALID', scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch_pool'):
+            branch_pool = maxpool_layer_w1(net, [3, 3], stride=2, padding='VALID')
+          net = tf.concat(axis=3, values=[branch3x3, branch3x3dbl, branch_pool])
+          end_points['mixed_17x17x768a'] = net
+         
+        # mixed4: 17 x 17 x 768.
+        with tf.variable_scope('mixed_17x17x768b'):
+          with tf.variable_scope('branch1x1'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch1x1 = conv_layer_w1(net, 192, [1, 1], scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch7x7'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch7x7 = conv_layer_w1(net, 128, [1, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7 = conv_layer_w1(branch7x7, 128, [1, 7], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7 = conv_layer_w1(branch7x7, 192, [7, 1], scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch7x7dbl'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch7x7dbl = conv_layer_w1(net, 128, [1, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7dbl = conv_layer_w1(branch7x7dbl, 128, [7, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7dbl = conv_layer_w1(branch7x7dbl, 128, [1, 7], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7dbl = conv_layer_w1(branch7x7dbl, 128, [7, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7dbl = conv_layer_w1(branch7x7dbl, 192, [1, 7], scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch_pool'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch_pool = avgpool_layer_w1(net, [3, 3])
+            branch_pool = conv_layer_w1(branch_pool, 192, [1, 1], scope=_scope + str(_scope_cnt))
+          net = tf.concat(axis=3, values=[branch1x1, branch7x7, branch7x7dbl, branch_pool])
+          end_points['mixed_17x17x768b'] = net
+         
+        # mixed_5: 17 x 17 x 768.
+        with tf.variable_scope('mixed_17x17x768c'):
+          with tf.variable_scope('branch1x1'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch1x1 = conv_layer_w1(net, 192, [1, 1], scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch7x7'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch7x7 = conv_layer_w1(net, 160, [1, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7 = conv_layer_w1(branch7x7, 160, [1, 7], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7 = conv_layer_w1(branch7x7, 192, [7, 1], scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch7x7dbl'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch7x7dbl = conv_layer_w1(net, 160, [1, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7dbl = conv_layer_w1(branch7x7dbl, 160, [7, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7dbl = conv_layer_w1(branch7x7dbl, 160, [1, 7], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7dbl = conv_layer_w1(branch7x7dbl, 160, [7, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7dbl = conv_layer_w1(branch7x7dbl, 192, [1, 7], scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch_pool'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch_pool = avgpool_layer_w1(net, [3, 3])
+            branch_pool = conv_layer_w1(branch_pool, 192, [1, 1], scope=_scope + str(_scope_cnt))
+          net = tf.concat(axis=3, values=[branch1x1, branch7x7, branch7x7dbl, branch_pool])
+          end_points['mixed_17x17x768c'] = net
+         
+        # mixed_6: 17 x 17 x 768.
+        with tf.variable_scope('mixed_17x17x768d'):
+          with tf.variable_scope('branch1x1'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch1x1 = conv_layer_w1(net, 192, [1, 1])
+          with tf.variable_scope('branch7x7'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch7x7 = conv_layer_w1(net, 160, [1, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7 = conv_layer_w1(branch7x7, 160, [1, 7], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7 = conv_layer_w1(branch7x7, 192, [7, 1], scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch7x7dbl'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch7x7dbl = conv_layer_w1(net, 160, [1, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7dbl = conv_layer_w1(branch7x7dbl, 160, [7, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7dbl = conv_layer_w1(branch7x7dbl, 160, [1, 7], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7dbl = conv_layer_w1(branch7x7dbl, 160, [7, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7dbl = conv_layer_w1(branch7x7dbl, 192, [1, 7], scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch_pool'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch_pool = avgpool_layer_w1(net, [3, 3])
+            _scope_cnt += 1
+            branch_pool = conv_layer_w1(branch_pool, 192, [1, 1], scope=_scope + str(_scope_cnt))
+          net = tf.concat(axis=3, values=[branch1x1, branch7x7, branch7x7dbl, branch_pool])
+          end_points['mixed_17x17x768d'] = net
+         
+        # mixed_7: 17 x 17 x 768.
+        with tf.variable_scope('mixed_17x17x768e'):
+          with tf.variable_scope('branch1x1'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch1x1 = conv_layer_w1(net, 192, [1, 1], scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch7x7'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch7x7 = conv_layer_w1(net, 192, [1, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7 = conv_layer_w1(branch7x7, 192, [1, 7], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7 = conv_layer_w1(branch7x7, 192, [7, 1], scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch7x7dbl'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch7x7dbl = conv_layer_w1(net, 192, [1, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7dbl = conv_layer_w1(branch7x7dbl, 192, [7, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7dbl = conv_layer_w1(branch7x7dbl, 192, [1, 7], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7dbl = conv_layer_w1(branch7x7dbl, 192, [7, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7dbl = conv_layer_w1(branch7x7dbl, 192, [1, 7], scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch_pool'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch_pool = avgpool_layer_w1(net, [3, 3])
+            branch_pool = conv_layer_w1(branch_pool, 192, [1, 1], scope=_scope + str(_scope_cnt))
+          net = tf.concat(axis=3, values=[branch1x1, branch7x7, branch7x7dbl, branch_pool])
+          end_points['mixed_17x17x768e'] = net
+         
+        ''' 
+        # Auxiliary Head logits
+        aux_logits = tf.identity(end_points['mixed_17x17x768e'])
+        with tf.variable_scope('aux_logits'):
+          aux_logits = avgpool_layer_w1(aux_logits, [5, 5], stride=3,
+                                    padding='VALID')
+          aux_logits = conv_layer_w1(aux_logits, 128, [1, 1], scope='proj')
+          # Shape of feature map before the final layer.
+          shape = aux_logits.get_shape()
+          aux_logits = conv_layer_w1(aux_logits, 768, shape[1:3], stddev=0.01,
+                                  padding='VALID')
+          aux_logits = ops.flatten(aux_logits)
+          aux_logits = ops.fc(aux_logits, num_classes, activation=None,
+                              stddev=0.001, restore=restore_logits)
+          end_points['aux_logits'] = aux_logits
+        ''' 
+         
+        # mixed_8: 8 x 8 x 1280.
+        # Note that the scope below is not changed to not void previous
+        # checkpoints.
+        # (TODO) Fix the scope when appropriate.
+        with tf.variable_scope('mixed_17x17x1280a'):
+          with tf.variable_scope('branch3x3'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch3x3 = conv_layer_w1(net, 192, [1, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch3x3 = conv_layer_w1(branch3x3, 320, [3, 3], stride=2,
+                                   padding='VALID', scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch7x7x3'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch7x7x3 = conv_layer_w1(net, 192, [1, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7x3 = conv_layer_w1(branch7x7x3, 192, [1, 7], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7x3 = conv_layer_w1(branch7x7x3, 192, [7, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch7x7x3 = conv_layer_w1(branch7x7x3, 192, [3, 3],
+                                     stride=2, padding='VALID', scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch_pool'):
+            branch_pool = maxpool_layer_w1(net, [3, 3], stride=2, padding='VALID')
+          net = tf.concat(axis=3, values=[branch3x3, branch7x7x3, branch_pool])
+          end_points['mixed_17x17x1280a'] = net
+         
+        # mixed_9: 8 x 8 x 2048.
+        with tf.variable_scope('mixed_8x8x2048a'):
+          with tf.variable_scope('branch1x1'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch1x1 = conv_layer_w1(net, 320, [1, 1], scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch3x3'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch3x3 = conv_layer_w1(net, 384, [1, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch3x3_1 = conv_layer_w1(branch3x3, 384, [1, 3], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch3x3_2 = conv_layer_w1(branch3x3, 384, [3, 1], scope=_scope + str(_scope_cnt))
+            branch3x3 = tf.concat(axis=3, values=[ branch3x3_1, branch3x3_2])
+            '''
+            branch3x3 = tf.concat(axis=3, values=[conv_layer_w1(branch3x3, 384, [1, 3]),
+                                                  conv_layer_w1(branch3x3, 384, [3, 1])])
+            '''
+          with tf.variable_scope('branch3x3dbl'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch3x3dbl = conv_layer_w1(net, 448, [1, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch3x3dbl = conv_layer_w1(branch3x3dbl, 384, [3, 3], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch3x3dbl_0 = conv_layer_w1(branch3x3dbl, 384, [1, 3], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch3x3dbl_1 = conv_layer_w1(branch3x3dbl, 384, [3, 1], scope=_scope + str(_scope_cnt))
+            branch3x3dbl = tf.concat(axis=3, values=[branch3x3dbl_0,
+                                                     branch3x3dbl_1])
+            '''
+            branch3x3dbl = tf.concat(axis=3, values=[conv_layer_w1(branch3x3dbl, 384, [1, 3]),
+                                                     conv_layer_w1(branch3x3dbl, 384, [3, 1])])
+            '''
+          with tf.variable_scope('branch_pool'):
+            branch_pool = avgpool_layer_w1(net, [3, 3])
+            branch_pool = conv_layer_w1(branch_pool, 192, [1, 1])
+          net = tf.concat(axis=3, values=[branch1x1, branch3x3, branch3x3dbl, branch_pool])
+          end_points['mixed_8x8x2048a'] = net
+         
+        # mixed_10: 8 x 8 x 2048.
+        with tf.variable_scope('mixed_8x8x2048b'):
+          with tf.variable_scope('branch1x1'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch1x1 = conv_layer_w1(net, 320, [1, 1], scope=_scope + str(_scope_cnt))
+          with tf.variable_scope('branch3x3'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch3x3 = conv_layer_w1(net, 384, [1, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch3x3_0 = conv_layer_w1(branch3x3, 384, [1, 3], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch3x3_1 = conv_layer_w1(branch3x3, 384, [3, 1], scope=_scope + str(_scope_cnt))
+            branch3x3 = tf.concat(axis=3, values=[branch3x3_0,
+                                                     branch3x3_1])
+            '''
+            branch3x3 = tf.concat(axis=3, values=[conv_layer_w1(branch3x3, 384, [1, 3]),
+                                                  conv_layer_w1(branch3x3, 384, [3, 1])])
+            '''
+          with tf.variable_scope('branch3x3dbl'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch3x3dbl = conv_layer_w1(net, 448, [1, 1], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch3x3dbl = conv_layer_w1(branch3x3dbl, 384, [3, 3], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch3x3dbl_0 = conv_layer_w1(branch3x3dbl, 384, [1, 3], scope=_scope + str(_scope_cnt))
+            _scope_cnt += 1
+            branch3x3dbl_1 = conv_layer_w1(branch3x3dbl, 384, [3, 1], scope=_scope + str(_scope_cnt))
+            branch3x3dbl = tf.concat(axis=3, values=[branch3x3dbl_0,
+                                                     branch3x3dbl_1])
+            '''
+            branch3x3dbl = tf.concat(axis=3, values=[conv_layer_w1(branch3x3dbl, 384, [1, 3]),
+                                                     conv_layer_w1(branch3x3dbl, 384, [3, 1])])
+            '''
+          with tf.variable_scope('branch_pool'):
+            _scope_cnt = 0
+            _scope = tf.get_variable_scope().name
+            branch_pool = avgpool_layer_w1(net, [3, 3])
+            branch_pool = conv_layer_w1(branch_pool, 192, [1, 1], scope=_scope + str(_scope_cnt))
+          net = tf.concat(axis=3, values=[branch1x1, branch3x3, branch3x3dbl, branch_pool])
+          end_points['mixed_8x8x2048b'] = net
+         
+        # Final pooling and prediction
+        with tf.variable_scope('logits'):
+          shape = net.get_shape()
+          net = avgpool_layer_w1(net, shape[1:3], padding='VALID', scope='pool')
+          # 1 x 1 x 2048
+          net = tf.layers.dropout( inputs=net, rate=0.5, name='dropout', seed=101, training=is_training)
+          net = tf.layers.flatten( net, name='flatten')
+          # 2048
+          logits = tf.layers.dense( net, NUM_CLASSES, activation='sigmoid', name='logits')
+          # 1000
+          end_points['logits'] = logits
+          #end_points['predictions'] = tf.nn.softmax(logits, name='predictions')
+         
+    print("**final**",logits.get_shape(),"***")
+    return end_points['logits']
+ 
