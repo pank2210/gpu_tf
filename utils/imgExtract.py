@@ -8,6 +8,7 @@ import cv2
 import pandas as pd
 import numpy as np
 import tensorflow as tf
+import matplotlib.pyplot as plt
 
 sys.path.append('../')
 
@@ -32,6 +33,7 @@ class myImgExtractor:
     #patch specific params
     self.truth_pixel = truth_pixel #set ideally to 1 or to 255 for viewing purpose.
     self.patch_size = patch_size
+    self.o_patch_stride = patch_stride #original copy of patch stride is required as for test image this is override 
     self.patch_stride = patch_stride
      
     self.mylog(fn,"Invoked with id[%s] imgdir[%s] img_size[%d]" % (id,imgdir,img_size))
@@ -374,6 +376,13 @@ class myImgExtractor:
         continue
       #mi = self.reshape_img( self.img_size, self.img_size, mi)
       #cv2.imshow(' masked image [' + img_ids[6] + ']', mi.astype(np.float32)/255)
+      
+      #if test record then stride is always non overlaping. this required to reconstruct original image
+      if rec_type == 'test':
+        self.patch_stride = int(self.patch_size/2) #stride such that there is 0 overlap
+      else:
+        self.patch_stride = self.o_patch_stride #restor original stride
+      
       oi_ep = self.get_img_patches(img=oi)
       ti_ep = self.get_img_patches(img=ti)
        
@@ -385,7 +394,7 @@ class myImgExtractor:
         ti_im = ti_ep[0, i, :, :, 0]
         
         #check if patch image is blank
-        if oi_im.sum()  == 0:
+        if oi_im.sum()  == 0 and rec_type != 'test':
            blank_patch_cnt += 1 
            blank_patch_flag = True
         else:
@@ -400,8 +409,8 @@ class myImgExtractor:
            #oi_fl = self.tdir + id + '_' + str(i) + '_oi'
            oi_fl = self.tdir + 'images/' + id + '_' + str(i)
            ti_fl = self.tdir + 'gt/' + id + '_' + str(i)
-           np.save( oi_fl, oi_im)
-           np.save( ti_fl, ti_im)
+           plt.imsave( oi_fl + '.jpg', oi_im.astype(np.uint8))
+           plt.imsave( ti_fl + '.jpg', ti_im.astype(np.uint8),cmap='gray')
            if rec_type == 'val':
               val_fd.write(  id + '_' + str(i) + '\n')
            elif rec_type == 'test':
@@ -664,7 +673,7 @@ if __name__ == "__main__":
     img_extractor = myImgExtractor(id='ie23',
                                      imgdir='/disk1/data1/data/idrid/ex/',
                                      img_size=2560,
-                                     tdir='/disk1/data1/data/px_he/',
+                                     tdir='/disk1/data1/data/px_he1/',
                                      patch_size=128,
                                      patch_stride=32, #for generating train image use stride=32 else for test use patch_size
                                      truth_pixel=255

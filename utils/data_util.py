@@ -862,13 +862,21 @@ class Data(object):
       labelpath = self.gt_dir_path + image_id + self.img_filename_ext  #recreate target ground truth
        
       if os.path.exists(imgpath) and os.path.exists(labelpath):
-        img = np.load(imgpath) #Load original image
+        #Read Image data files
+        if self.img_filename_ext == '.npy': 
+          img = np.load(imgpath) #Load original image
+        else:
+          img = myimg.myImg( imageid=image_id, config=self.myImg_config, path=imgpath,channels=channels).getImage() 
         if self.channels == 1:
           x_buf[:,:,0] = img
         else:
           x_buf[:,:,:] = img
          
-        label = np.load(labelpath) #load the label
+        #Read Ground truth mask corresponding to image 
+        if self.img_filename_ext == '.npy': 
+          label = np.load(labelpath) #load the label
+        else:
+          label = myimg.myImg( imageid=image_id, config=self.myImg_config, path=labelpath,channels=1).getImage() 
         label[label > 0] = 1. #reset truth pixel to 1's else it should be 0's
         label = np.reshape(label,(1,label.shape[0]*label.shape[1])) #flatten the label
         y_buf[:] = label
