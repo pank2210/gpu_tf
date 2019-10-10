@@ -58,7 +58,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_dir', '/disk1/data1/data/models/inception',
                            """Directory where to write event logs """
                            """and checkpoint.""")
-tf.app.flags.DEFINE_integer('max_steps', 16000,
+tf.app.flags.DEFINE_integer('max_steps', 150000,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_integer('num_gpus', 2,
                             """How many GPUs to use.""")
@@ -360,16 +360,16 @@ def train(model_name='mymodel.ckpt'):
         print("*******pt50 value*******", pt50[:5,:10])
         '''
          
-        pt75 = test_probs_value 
-        pt75[pt75 >= .75 ] = 1.
-        pt75[pt75 < .75 ] = 0.
-        pt75_accu = 1 - np.abs(pt75 - test_label_value).mean()
+        pt95 = test_probs_value 
+        pt95[pt95 >= .95 ] = 1.
+        pt95[pt95 < .95 ] = 0.
+        pt95_accu = 1 - np.abs(pt95 - test_label_value).mean()
          
         format_str = ('%s: step %d, loss=%.2f (%.1f examples/sec; %.3f '
-                      'sec/batch) accu[%.5f] accu75[%.5f]')
+                      'sec/batch) accu[%.5f] accu95[%.5f]')
         print (format_str % (datetime.now(), step, loss_value,
                              examples_per_sec, sec_per_batch, 
-                             pt50_accu,pt75_accu))
+                             pt50_accu,pt95_accu))
          
         ''' 
         if type(test_accu_value) is list: 
@@ -483,7 +483,7 @@ def test2(model_name,test_examples):
        
       if step % 10 == 0:
         format_str = ('%s: step %d, '
-                      ' accu50[%.4f] accu[%.4f]')
+                      ' accu50[%.5f] accu[%.5f]')
         print (format_str % (datetime.now(), step,
                               accu50,test_accu_value))
        
@@ -669,7 +669,7 @@ def main(argv=None):  # pylint: disable=unused-argument
    
   #model_name = 'resnet_basic_lr01.cpkt'
   #model_name = 'incep_basic_lr01.cpkt'
-  model_name = 'incep_v3_he.cpkt'
+  model_name = 'incep_v3_he_da_wce10.cpkt'
    
   #cifar10.maybe_download_and_extract()
   if len(argv) > 0:
@@ -688,7 +688,7 @@ def main(argv=None):  # pylint: disable=unused-argument
     #test(model_name,test_examples=100)
   else:
     model_name = model_name + '-' + steps
-    test2(model_name,test_examples=71)
+    test2(model_name,test_examples=100)
 
 if __name__ == '__main__':
   tf.app.run()

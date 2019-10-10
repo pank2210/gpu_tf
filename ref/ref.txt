@@ -18,3 +18,10 @@ https://stackoverflow.com/questions/25009284/how-to-plot-roc-curve-in-python
 
 Command to establish ssh tunnel to remote server where jupyter notebook needs to be started
 ssh -L 8888:localhost:8888 sammy@203.0.113.0
+
+inception model ref
+https://github.com/tensorflow/models/blob/master/research/inception/inception/slim/inception_model.py
+
+Image Augmentor
+https://augmentor.readthedocs.io/en/master/index.html
+

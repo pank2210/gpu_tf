@@ -862,24 +862,39 @@ class Data(object):
       labelpath = self.gt_dir_path + image_id + self.img_filename_ext  #recreate target ground truth
        
       if os.path.exists(imgpath) and os.path.exists(labelpath):
-        #Read Image data files
-        if self.img_filename_ext == '.npy': 
-          img = np.load(imgpath) #Load original image
-        else:
-          img = myimg.myImg( imageid=image_id, config=self.myImg_config, path=imgpath,channels=channels).getImage() 
-        if self.channels == 1:
-          x_buf[:,:,0] = img
-        else:
-          x_buf[:,:,:] = img
-         
-        #Read Ground truth mask corresponding to image 
-        if self.img_filename_ext == '.npy': 
-          label = np.load(labelpath) #load the label
-        else:
-          label = myimg.myImg( imageid=image_id, config=self.myImg_config, path=labelpath,channels=1).getImage() 
-        label[label > 0] = 1. #reset truth pixel to 1's else it should be 0's
-        label = np.reshape(label,(1,label.shape[0]*label.shape[1])) #flatten the label
-        y_buf[:] = label
+        try:
+           #Read Image data files
+           if self.img_filename_ext == '.npy': 
+             img = np.load(imgpath) #Load original image
+           else:
+             img = myimg.myImg( imageid=image_id, config=self.myImg_config, path=imgpath,channels=channels).getImage() 
+           #assert(img.shape, (n_img_w,n_img_h,channels))
+            
+           #skip images that do not have size that we need 
+           if img.shape[0] != n_img_w:
+             continue
+            
+           if self.channels == 1:
+             x_buf[:,:,0] = img
+           else:
+             x_buf[:,:,:] = img
+            
+           #Read Ground truth mask corresponding to image 
+           if self.img_filename_ext == '.npy': 
+             label = np.load(labelpath) #load the label
+           else:
+             label = myimg.myImg( imageid=image_id, config=self.myImg_config, path=labelpath,channels=1).getImage() 
+           label[label > 0] = 1. #reset truth pixel to 1's else it should be 0's
+           label = np.reshape(label,(1,label.shape[0]*label.shape[1])) #flatten the label
+           y_buf[:] = label
+            
+        except ValueError as e:
+           print("***********************************************************************")
+           print("Exception processing image_id[%s] imagepath[%s]" % (image_id,imgpath))
+           e_info = sys.exc_info()[0] 
+           print("Exception info [%s]" % (e_info))
+            
+           raise e
          
         cnt += 1
         self.processing_cnt += 1
@@ -910,7 +925,7 @@ class Data(object):
                  (tf.TensorShape(None),tf.TensorShape([self.img_width,self.img_heigth,self.channels]),
                                tf.TensorShape([self.img_width * self.img_heigth])))
     dataset = dataset.batch(self.batch_size)
-    if self.data_file.startswith('train'):
+    if self.data_file.startswith('train'): # or self.data_file.startswith('val'):
        dataset = dataset.shuffle(buffer_size=self.pre_fetch*self.batch_size,seed=self.batch_random_seed)
     _iterator = dataset.make_initializable_iterator()
     #_iterator = dataset.make_one_shot_iterator()

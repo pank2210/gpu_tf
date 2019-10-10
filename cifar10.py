@@ -154,7 +154,8 @@ def _variable_with_weight_decay(name, shape, stddev, wd):
   var = _variable_on_cpu(
       name,
       shape,
-      tf.truncated_normal_initializer(stddev=stddev, dtype=dtype))
+      #tf.truncated_normal_initializer(stddev=stddev, dtype=dtype))
+      tf.glorot_normal_initializer( dtype=dtype))
   if wd is not None:
     weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')
     tf.add_to_collection('losses', weight_decay)
@@ -229,7 +230,7 @@ def gavgpool_layer( inpt, filter_, stride_, padding_='SAME'):
 def avgpool_layer( inpt, filter_, stride_, padding_='SAME'):
     return tf.nn.avg_pool(inpt, ksize=filter_, strides=stride_, padding=padding_)
 
-def conv_layer_no_scope( inpt, filter_shape, stride, padding_='SAME', stddev=5e-2, wd=0.04):
+def conv_layer_no_scope( inpt, filter_shape, stride, padding_='SAME', stddev=5e-2, wd=0.004):
     #print("*****",_scope,"**conv layer**",inpt.get_shape(),"**filter**",filter_shape,"**stride**",stride)
     out_channels = filter_shape[3]
     n = filter_shape[0] * filter_shape[1] * out_channels
@@ -693,8 +694,10 @@ def loss(logits, labels, loss_type='losses', threshold=.5):
   print("logits ================",logits.get_shape())
   #cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
   #cross_entropy = tf.nn.softmax_cross_entropy_with_logits_v2(
-  cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(
-      labels=labels, logits=logits, name='cross_entropy_per_example')
+  #cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(
+  #    labels=labels, logits=logits, name='cross_entropy_per_example')
+  cross_entropy = tf.nn.weighted_cross_entropy_with_logits(
+      labels=labels, logits=logits, pos_weight=9, name='cross_entropy_per_example')
   print("cross_entropy","================",cross_entropy.get_shape())
   cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
   #assert not tf.is_nan(cross_entropy_mean), 'Model diverged with cost or cross_entropy_mean = NaN'

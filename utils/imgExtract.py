@@ -17,7 +17,7 @@ from utils import myImg2 as myimg
 from utils import cmdopt_util as cmd_util
 
 class myImgExtractor:
-  def __init__(self,id,imgdir,img_size,tdir,patch_size,patch_stride,truth_pixel=1):
+  def __init__(self,id,imgdir,img_size,tdir,patch_size,patch_stride,img_ext='.jpg',gt_img_ext='.jpg',truth_pixel=1):
     self.cn = 'myImgExtractor'
     fn = '__init__'
    
@@ -26,7 +26,8 @@ class myImgExtractor:
     self.imgdir = imgdir
     self.tdir = tdir
     self.img_size = img_size
-    self.img_ext = '.jpg'
+    self.img_ext = img_ext
+    self.gt_img_ext = gt_img_ext
     self.img_config_fl = '../config/img_conf.csv' #file holding all marked masked/regions of images
     self.mask_df = None #DF to read image mask params
     
@@ -133,7 +134,8 @@ class myImgExtractor:
      #self.mylog(fn,"Generating ground truth...")
      
      img_path = self.imgdir + 'images/' + img_id + self.img_ext
-     mask_path = self.imgdir + 'gt/' + img_id + '_HE' + self.img_ext
+     #mask_path = self.imgdir + 'gt/' + img_id + '_HE' + self.img_ext
+     mask_path = self.imgdir + 'gt/' + img_id + self.gt_img_ext
      myimg1 = None
      #self.mylog(fn,"processing img_id[%s] img_path[%s]..." % (img_id,img_path))
       
@@ -378,15 +380,15 @@ class myImgExtractor:
       #cv2.imshow(' masked image [' + img_ids[6] + ']', mi.astype(np.float32)/255)
       
       #if test record then stride is always non overlaping. this required to reconstruct original image
-      if rec_type == 'test':
-        self.patch_stride = int(self.patch_size/2) #stride such that there is 0 overlap
-      else:
+      if rec_type == 'train':
         self.patch_stride = self.o_patch_stride #restor original stride
+      else:
+        self.patch_stride = int(self.patch_size) #stride such that there is 0 overlap
       
       oi_ep = self.get_img_patches(img=oi)
       ti_ep = self.get_img_patches(img=ti)
        
-      blank_patch_threshold = 10 #no of blank images allowed from given to pass to model 
+      blank_patch_threshold = 2 #no of blank images allowed from given to pass to model 
       blank_patch_cnt = 0 #counter to count how many total black images (no non-zero pixel in patch) 
       #Show extracted patches images
       for i in range(oi_ep.shape[1]):
@@ -671,11 +673,14 @@ class myImgExtractor:
 if __name__ == "__main__":
     img_path = cmd_util.get_imgpath(sys.argv[1:])
     img_extractor = myImgExtractor(id='ie23',
-                                     imgdir='/disk1/data1/data/idrid/ex/',
-                                     img_size=2560,
-                                     tdir='/disk1/data1/data/px_he1/',
+                                     imgdir='/disk1/data1/data/kaggle/ex/',
+                                     img_size=2048,
+                                     tdir='/disk1/data1/data/kaggle_patches/',
                                      patch_size=128,
                                      patch_stride=32, #for generating train image use stride=32 else for test use patch_size
+                                     img_ext='.jpeg',
+                                     #gt_img_ext='_HE.jpg',
+                                     gt_img_ext='.jpeg',
                                      truth_pixel=255
                                     )
     #img_extractor.process_img_by_id(img_id='IDRiD_50.jpg')

@@ -1,0 +1,5 @@
+
+
+d1.loc[(d1['rec_type'] == 'train') & (d1['gt_px_cnt'] > 0),['img_id','id']].to_csv('train_df1.csv',index=False)
+
+grep "step " he_da.out | cut -d ' ' -f4,5,10 | sed  's/ loss=//g' | sed 's/ accu\[/,/g' | sed 's/\]//g' | more
