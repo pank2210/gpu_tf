@@ -70,7 +70,6 @@ tf.app.flags.DEFINE_integer('no_classes', NUM_CLASSES,
 MOVING_AVERAGE_DECAY = 0.9999     # The decay to use for the moving average.
 NUM_EPOCHS_PER_DECAY = 5.0      # Epochs after which learning rate decays.
 LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
-#INITIAL_LEARNING_RATE = 0.0065   # Initial learning rate.
 INITIAL_LEARNING_RATE = 0.01   # Initial learning rate.
 
 # If a model is trained with multiple GPUs, prefix all Op names with tower_name
@@ -154,8 +153,8 @@ def _variable_with_weight_decay(name, shape, stddev, wd):
   var = _variable_on_cpu(
       name,
       shape,
-      #tf.truncated_normal_initializer(stddev=stddev, dtype=dtype))
-      tf.glorot_normal_initializer( dtype=dtype))
+      tf.truncated_normal_initializer(stddev=stddev, dtype=dtype))
+      #tf.glorot_normal_initializer( dtype=dtype))
   if wd is not None:
     weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')
     tf.add_to_collection('losses', weight_decay)
@@ -692,12 +691,16 @@ def loss(logits, labels, loss_type='losses', threshold=.5):
   labels = tf.cast(labels, tf.float32)
   print("labels ================",labels.get_shape())
   print("logits ================",logits.get_shape())
-  #cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
-  #cross_entropy = tf.nn.softmax_cross_entropy_with_logits_v2(
-  #cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(
-  #    labels=labels, logits=logits, name='cross_entropy_per_example')
+  '''
+  cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
+  cross_entropy = tf.nn.softmax_cross_entropy_with_logits_v2(
+  cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(
+      labels=labels, logits=logits, name='cross_entropy_per_example')
   cross_entropy = tf.nn.weighted_cross_entropy_with_logits(
       labels=labels, logits=logits, pos_weight=9, name='cross_entropy_per_example')
+  '''
+  cross_entropy = tf.math.square( tf.math.subtract(logits, labels)) #Mean Square Error for relu activation
+  #cross_entropy = tf.keras.losses.MSE( labels, logits) #Mean Square Error for relu activation
   print("cross_entropy","================",cross_entropy.get_shape())
   cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
   #assert not tf.is_nan(cross_entropy_mean), 'Model diverged with cost or cross_entropy_mean = NaN'
@@ -716,7 +719,11 @@ def loss(logits, labels, loss_type='losses', threshold=.5):
     #print("preds","================",preds.get_shape())
     test_accu = tf.reduce_mean(tf.cast(tf.equal(tf.cast(labels,tf.float32), logits), tf.float32))
     '''
+    #test_accu = 1 - tf.reduce_mean(tf.math.abs(tf.math.subtract(logits,tf.cast(labels,tf.float32))))
+     
+    #below function if ro continious target 
     test_accu = 1 - tf.reduce_mean(tf.math.abs(tf.math.subtract(logits,tf.cast(labels,tf.float32))))
+     
     #print("test_accu","================",test_accu.get_shape())
     tf.add_to_collection( 'test_accuracy', test_accu)
     #tf.add_to_collection( 'test_preds', preds)
@@ -1273,7 +1280,7 @@ def inceptionV3(inputs, is_training=True):
           net = tf.layers.dropout( inputs=net, rate=0.5, name='dropout', seed=101, training=is_training)
           net = tf.layers.flatten( net, name='flatten')
           # 2048
-          logits = tf.layers.dense( net, NUM_CLASSES, activation='sigmoid', name='logits')
+          logits = tf.layers.dense( net, NUM_CLASSES, activation='relu', name='logits')
           # 1000
           end_points['logits'] = logits
           #end_points['predictions'] = tf.nn.softmax(logits, name='predictions')

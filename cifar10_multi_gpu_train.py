@@ -58,7 +58,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_dir', '/disk1/data1/data/models/inception',
                            """Directory where to write event logs """
                            """and checkpoint.""")
-tf.app.flags.DEFINE_integer('max_steps', 150000,
+tf.app.flags.DEFINE_integer('max_steps', 1810000,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_integer('num_gpus', 2,
                             """How many GPUs to use.""")
@@ -347,29 +347,27 @@ def train(model_name='mymodel.ckpt'):
         #print("*******test_probs type*******", type(test_probs_value))
         #print("*******test_probs shape*******", test_probs_value.shape)
         print("*******test_probs value*******", test_probs_value[:5,:10])
-        '''
          
         pt50 = test_probs_value 
         pt50[pt50 >= .5 ] = 1.
         pt50[pt50 < .5 ] = 0.
         pt50_accu = 1 - np.abs(pt50 - test_label_value).mean()
-        '''
+         
         print("*******test_label_value *******", test_label_value.shape)
         print("*******test_label_value value*******", test_label_value[:5,:10])
         #print("*******pt50 *******", pt50.shape)
         print("*******pt50 value*******", pt50[:5,:10])
         '''
          
-        pt95 = test_probs_value 
-        pt95[pt95 >= .95 ] = 1.
-        pt95[pt95 < .95 ] = 0.
-        pt95_accu = 1 - np.abs(pt95 - test_label_value).mean()
+        #calculate pred accuracy for parametric target 
+        pt50_accu = np.abs(test_label_value - test_probs_value) < .001 
+        pt50_accu = pt50_accu.sum()/pt50_accu.size
          
         format_str = ('%s: step %d, loss=%.2f (%.1f examples/sec; %.3f '
-                      'sec/batch) accu[%.5f] accu95[%.5f]')
+                      'sec/batch) accu[%.5f]')
         print (format_str % (datetime.now(), step, loss_value,
                              examples_per_sec, sec_per_batch, 
-                             pt50_accu,pt95_accu))
+                             pt50_accu))
          
         ''' 
         if type(test_accu_value) is list: 
@@ -668,8 +666,8 @@ def main(argv=None):  # pylint: disable=unused-argument
   steps = '499'
    
   #model_name = 'resnet_basic_lr01.cpkt'
-  #model_name = 'incep_basic_lr01.cpkt'
-  model_name = 'incep_v3_he_da_wce10.cpkt'
+  #model_name = 'incep_v3_he_da_wce10.cpkt'
+  model_name = 'incepv3_kaggle_pretrain_lr01.cpkt'
    
   #cifar10.maybe_download_and_extract()
   if len(argv) > 0:

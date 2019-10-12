@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import sys
 import os
+import re
 import psutil
 
 import tensorflow as tf
@@ -52,6 +53,7 @@ class Data(object):
     self.img_buf_size = None #shape of largest image unles restricted.
     self.cdir = self.config.getElementValue(elem_path='/common/cdir')
     self.train_data_dir = self.config.getElementValue(elem_path='/common/data_dir_path')
+    self.model_type = self.config.getElementValue(elem_path='/common/model_type')
     self.train_label_data_file = self.train_data_dir + self.config.getElementValue(elem_path='/train/label_data_file')
     self.log( mname, "Reading train_label_data_file[{}]".format(self.train_label_data_file), level=3)
     self.training_dataset_ratio = self.config.getElementValue(elem_path='/model/param/training_dataset_ratio')
@@ -80,6 +82,7 @@ class Data(object):
     self.log( mname, "batch_size[{}]".format(self.batch_size), level=3)
      
     self.channels = self.config.getElementValue(elem_path='/img/channels')
+    self.gt_channels = self.config.getElementValue(elem_path='/img/gt_channels')
     self.log( mname, "channels[{}]".format(self.channels), level=3)
      
     self.myImg_config = cutil.Config(configid="myConfId",cdir=self.cdir)
@@ -838,15 +841,16 @@ class Data(object):
     fd = open( self.train_data_dir + self.data_file + '_df.csv', 'r')
     cnt = 0
     file_missing = 0
+    n_img_w = self.img_width
+    n_img_h = self.img_heigth
+    channels = self.channels
+    gt_channels = self.gt_channels
     
     #loop in through dataframe. 
     while True:
-      n_img_w = self.img_width
-      n_img_h = self.img_heigth
-      channels = self.channels
        
       x_buf = np.zeros(( n_img_w, n_img_h, channels), dtype='uint8')
-      y_buf = np.zeros(( n_img_w*n_img_h), dtype='uint8')
+      y_buf = np.zeros(( n_img_w*n_img_h*gt_channels), dtype='uint8')
        
       #self.log( mname, "[{}] recs for set.".format(img_cnt), level=3)
        
@@ -859,7 +863,11 @@ class Data(object):
       #label_id = line[1] 
        
       imgpath = self.img_dir_path + image_id + self.img_filename_ext #recreate original file URI
-      labelpath = self.gt_dir_path + image_id + self.img_filename_ext  #recreate target ground truth
+      if self.model_type == 'pretrain_random_patch':
+        m = re.findall( "^(.*?)_\d+$", image_id)
+        labelpath = self.gt_dir_path + m[0] + self.img_filename_ext  #recreate target ground truth
+      else:
+        labelpath = self.gt_dir_path + image_id + self.img_filename_ext  #recreate target ground truth
        
       if os.path.exists(imgpath) and os.path.exists(labelpath):
         try:
@@ -883,9 +891,12 @@ class Data(object):
            if self.img_filename_ext == '.npy': 
              label = np.load(labelpath) #load the label
            else:
-             label = myimg.myImg( imageid=image_id, config=self.myImg_config, path=labelpath,channels=1).getImage() 
-           label[label > 0] = 1. #reset truth pixel to 1's else it should be 0's
-           label = np.reshape(label,(1,label.shape[0]*label.shape[1])) #flatten the label
+             label = myimg.myImg( imageid=image_id, config=self.myImg_config, path=labelpath,channels=gt_channels).getImage() 
+           
+           if gt_channels == 1: #
+             label[label > 0] = 1. #reset truth pixel to 1's else it should be 0's
+            
+           label = np.reshape(label,(1,label.shape[0]*label.shape[1]*gt_channels)) #flatten the label
            y_buf[:] = label
             
         except ValueError as e:
@@ -915,6 +926,13 @@ class Data(object):
       x_buf -= x_buf_min
       #x_buf /= x_buf_max
        
+      #below section of normalizing y_buf is only requried for target with continious variable i.e. pixel intensity 
+      y_buf = y_buf.astype('float32') / 255
+      y_buf_min = np.min(y_buf)
+      y_buf_max = np.max(y_buf)
+      y_buf -= y_buf_min
+      #x_buf /= x_buf_max
+       
       yield ( image_id, x_buf, y_buf)
    
   def get_iterator2(self):
@@ -923,7 +941,7 @@ class Data(object):
                  self.data_generator, \
                  (tf.string,tf.float32, tf.float32), \
                  (tf.TensorShape(None),tf.TensorShape([self.img_width,self.img_heigth,self.channels]),
-                               tf.TensorShape([self.img_width * self.img_heigth])))
+                               tf.TensorShape([self.img_width * self.img_heigth * self.gt_channels])))
     dataset = dataset.batch(self.batch_size)
     if self.data_file.startswith('train'): # or self.data_file.startswith('val'):
        dataset = dataset.shuffle(buffer_size=self.pre_fetch*self.batch_size,seed=self.batch_random_seed)

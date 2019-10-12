@@ -2,6 +2,12 @@
 import os
 import sys
 import copy
+import time
+import re
+import random
+from datetime import datetime as dt
+
+import threading
 
 import cv2
 
@@ -10,6 +16,8 @@ import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
 
+import skimage.io as io
+
 sys.path.append('../')
 
 from utils import config as cutil
@@ -17,7 +25,7 @@ from utils import myImg2 as myimg
 from utils import cmdopt_util as cmd_util
 
 class myImgExtractor:
-  def __init__(self,id,imgdir,img_size,tdir,patch_size,patch_stride,img_ext='.jpg',gt_img_ext='.jpg',truth_pixel=1):
+  def __init__(self,id,imgdir,img_size,tdir,patch_size,patch_stride,img_ext='.jpg',gt_img_ext='.jpg',gt_flag=True,truth_pixel=1):
     self.cn = 'myImgExtractor'
     fn = '__init__'
    
@@ -28,6 +36,7 @@ class myImgExtractor:
     self.img_size = img_size
     self.img_ext = img_ext
     self.gt_img_ext = gt_img_ext
+    self.gt_flag = gt_flag
     self.img_config_fl = '../config/img_conf.csv' #file holding all marked masked/regions of images
     self.mask_df = None #DF to read image mask params
     
@@ -61,7 +70,7 @@ class myImgExtractor:
     self.read_img_mask_config()
   
   def mylog(self,fn='',msg=''):
-    print(self.cn,'[',self.id,']',fn,': ',msg)
+    print(self.cn,'[',self.id,'][',dt.now().strftime("%m/%d/%Y, %H:%M:%S"),'] ',fn,': ',msg)
   
   def read_img_mask_config( self, img_shape=[512,512,3]):
     fn = 'read_img_mask_config' #function name
@@ -134,8 +143,6 @@ class myImgExtractor:
      #self.mylog(fn,"Generating ground truth...")
      
      img_path = self.imgdir + 'images/' + img_id + self.img_ext
-     #mask_path = self.imgdir + 'gt/' + img_id + '_HE' + self.img_ext
-     mask_path = self.imgdir + 'gt/' + img_id + self.gt_img_ext
      myimg1 = None
      #self.mylog(fn,"processing img_id[%s] img_path[%s]..." % (img_id,img_path))
       
@@ -145,23 +152,29 @@ class myImgExtractor:
        print("Image file [%s] does not exists..." % (img_path))
        sys.exit(-1)
           
-     if os.path.exists(mask_path):
-       myimg2 = myimg.myImg( imageid=img_id, config=self.myImg_config, path=mask_path) 
-     else:
-       print("Image mask file [%s] does not exists..." % (mask_path))
-       sys.exit(-1)
-          
      image_org = myimg1.getImage()
      #print("**********",image_org.shape,type(image_org.shape),type(image_org))
      #self.mylog(fn,"org image shape [%d %d %d]" % (image_org.shape))
-     
-     #initialize truth image data
-     truth_img = myimg2.getImage()
-     #print("**********",truth_img.shape,type(truth_img.shape),type(truth_img))
-     #self.mylog(fn,"truth image shape [%d %d %d]" % (truth_img.shape))
-     
-     #return patch of DF for given img_id
-     return image_org, truth_img
+    
+     if self.gt_flag: #Get truth file only if flag is set on
+       #mask_path = self.imgdir + 'gt/' + img_id + '_HE' + self.img_ext
+       mask_path = self.imgdir + 'gt/' + img_id + self.gt_img_ext
+        
+       if os.path.exists(mask_path):
+         myimg2 = myimg.myImg( imageid=img_id, config=self.myImg_config, path=mask_path) 
+       else:
+         print("Image mask file [%s] does not exists..." % (mask_path))
+         sys.exit(-1)
+            
+       #initialize truth image data
+       truth_img = myimg2.getImage()
+       #print("**********",truth_img.shape,type(truth_img.shape),type(truth_img))
+       #self.mylog(fn,"truth image shape [%d %d %d]" % (truth_img.shape))
+       
+       #return patch of DF for given img_id
+       return image_org, truth_img
+     else:
+       return image_org, None
   
   ''' 
      build ground truth from mask dataset. The mask will be used to build target region of image i.e. 1's 
@@ -348,23 +361,42 @@ class myImgExtractor:
     #self.process_img(img_ids[0])
     
   ''' 
+    kick off multi threaded extraction by dividing frame in given threads.
   ''' 
-  def generate_data2(self):
+  def process( self, no_threads:int = None, probability:float=1.0):
+    fn = 'process'
+    if no_threads:
+      image_dfs = np.array_split(self.mask_df,no_threads)
+      i=0
+      for image_df in image_dfs:
+         try:
+           mythread = threading.Thread( target=self.generate_data2, args=("thread-%d" % (i),image_df,probability,))
+           mythread.start()
+           i += 1
+         except: 
+           self.mylog("###Unable to start new thread. Error.")
+    
+  ''' 
+    actual extraction logic given input dataframe that contains name of image files.
+  ''' 
+  def generate_data2(self,thread_name:str,image_df,probability:float=1.0):
     fn = 'generate_data2'
-    out_fl = 'patch_df.csv'
+    start_ts = time.time()
+    out_fl = thread_name + '_patch_df.csv'
     _batch_size = 1 #batch size to process images
      
     #open file for writing DF for patches
-    train_fd = open( self.tdir + 'train_df.csv', 'w')
-    val_fd = open( self.tdir + 'val_df.csv', 'w')
-    test_fd = open( self.tdir + 'test_df.csv', 'w')
-    imgextract_fd = open( self.tdir + 'imgextract_df.csv', 'w')
+    train_fd = open( self.tdir + thread_name + '_train_df.csv', 'w')
+    val_fd = open( self.tdir + thread_name + '_val_df.csv', 'w')
+    test_fd = open( self.tdir + thread_name + '_test_df.csv', 'w')
+    imgextract_fd = open( self.tdir + thread_name + '_imgextract_df.csv', 'w')
      
     #get img_id's for which this process nees to be run...
     #img_ids = self.mask_df.img_id.unique()
      
     cnt = 0 
-    for i,rec in self.mask_df.iterrows():
+    #for i,rec in self.mask_df.iterrows():
+    for i,rec in image_df.iterrows():
       img_id = rec.img_id
       rec_type = rec.rec_type
       #if cnt > 2:
@@ -373,9 +405,10 @@ class myImgExtractor:
       id = img_id.split('.')[0]
       oi, ti = self.get_image_and_ground_truth(id)
       
-      if (oi.shape[0] != ti.shape[0]) | (oi.shape[1] != oi.shape[1]): 
-        self.mylog("XXX original image and ground truth image size if not matching for img_id[{}]. oi[{}] and ti[{}]".format(img_id,oi.shape,ti.shape))
-        continue
+      if self.gt_flag:
+        if (oi.shape[0] != ti.shape[0]) | (oi.shape[1] != oi.shape[1]): 
+          self.mylog("XXX original image and ground truth image size if not matching for img_id[{}]. oi[{}] and ti[{}]".format(img_id,oi.shape,ti.shape))
+          continue
       #mi = self.reshape_img( self.img_size, self.img_size, mi)
       #cv2.imshow(' masked image [' + img_ids[6] + ']', mi.astype(np.float32)/255)
       
@@ -386,14 +419,23 @@ class myImgExtractor:
         self.patch_stride = int(self.patch_size) #stride such that there is 0 overlap
       
       oi_ep = self.get_img_patches(img=oi)
-      ti_ep = self.get_img_patches(img=ti)
+      if self.gt_flag:
+        ti_ep = self.get_img_patches(img=ti)
        
       blank_patch_threshold = 2 #no of blank images allowed from given to pass to model 
       blank_patch_cnt = 0 #counter to count how many total black images (no non-zero pixel in patch) 
-      #Show extracted patches images
-      for i in range(oi_ep.shape[1]):
+       
+      #check if we have to sample or get whole set. 
+      if probability < 1.0 and probability > 0: #get required samples
+        patches =  random.sample(range(oi_ep.shape[1]),int(probability*oi_ep.shape[1]))
+      else:
+        patches = range(oi_ep.shape[1])
+       
+      #Process extracted patches images
+      for i in patches:
         oi_im = oi_ep[0, i, :, :, :]
-        ti_im = ti_ep[0, i, :, :, 0]
+        if self.gt_flag:
+          ti_im = ti_ep[0, i, :, :, 0]
         
         #check if patch image is blank
         if oi_im.sum()  == 0 and rec_type != 'test':
@@ -410,9 +452,12 @@ class myImgExtractor:
            #oi_fl = self.tdir + id + '_' + str(i) + '_oi'
            #oi_fl = self.tdir + id + '_' + str(i) + '_oi'
            oi_fl = self.tdir + 'images/' + id + '_' + str(i)
-           ti_fl = self.tdir + 'gt/' + id + '_' + str(i)
            plt.imsave( oi_fl + '.jpg', oi_im.astype(np.uint8))
-           plt.imsave( ti_fl + '.jpg', ti_im.astype(np.uint8),cmap='gray')
+            
+           if self.gt_flag:
+             ti_fl = self.tdir + 'gt/' + id + '_' + str(i)
+             plt.imsave( ti_fl + '.jpg', ti_im.astype(np.uint8),cmap='gray')
+            
            if rec_type == 'val':
               val_fd.write(  id + '_' + str(i) + '\n')
            elif rec_type == 'test':
@@ -420,11 +465,17 @@ class myImgExtractor:
            else:
               train_fd.write(  id + '_' + str(i) + '\n')
             
-           imgextract_fd.write(  id \
+           if self.gt_flag:
+             imgextract_fd.write(  id \
                                + ',' + str(i) \
                                + ',' + rec_type \
                                + ',' + str(ti_im.sum()) \
                                #+ ',' + str(ti_im.size()) \
+                               + '\n' )
+           else:
+             imgextract_fd.write(  id \
+                               + ',' + str(i) \
+                               + ',' + rec_type \
                                + '\n' )
         '''
         if ti_im.sum() > 0:
@@ -442,7 +493,7 @@ class myImgExtractor:
        
       cnt += 1
        
-    #self.process_img(img_ids[0])
+    self.mylog(fn,"#[%s] processed [%d] images in [%f]..." % (thread_name,cnt,time.time()-start_ts))
     
   def reshape_img( self, n_img_w, n_img_h, imgbuf):
     i_w = imgbuf.shape[0]
@@ -669,23 +720,166 @@ class myImgExtractor:
         cv2.imshow('sd', im_1.astype(np.float32)/255)
         cv2.waitKey(0)
       ''' 
-
+  
+  #returns listing of match file pattern from given directory as full set of sample set.
+  def get_img_files_from_dir( self,ddir: str, file_name_pattern: str = None, probability: float = 1.0):
+      fn = 'get_img_files_from_dir'
+      #self.mylog(fn,"dir: {} pattern: {}".format(ddir,file_name_pattern))
+      files = os.listdir(ddir)
+      m_files = []
+      i=0
+      for filename in files:
+          if file_name_pattern:
+              m = re.findall(file_name_pattern,filename)
+              #self.mylog(fn,"m)
+              if m:
+                  m_files.append(m[0])
+              else:
+                  continue
+          else:
+              m_files.append(filename)
+          #self.mylog(fn,"filename)
+          i += 1
+          
+      if probability >= 1.0 and probability > 0:
+          return m_files
+      else:
+          #sample based on given probability
+          random.seed(101)
+          m_files = random.sample(m_files,int(probability*len(m_files)))
+          
+          return m_files
+  
+  #from given directory this function iwll read all given image file pattern to create sample train, val and test dataset
+  def prep_training_data_from_images_in_dir( self, ddir:str, file_name_pattern:str, probability:float):
+      fn = 'prep_training_data_from_images_in_dir'
+      #get the files
+      f_list = self.get_img_files_from_dir(ddir,file_name_pattern=file_name_pattern,probability=probability)
+      self.mylog(fn,"f_list has [{}] files...".format(len(f_list)))
+       
+      #distribute data across train, val and test
+      f_list_df = pd.DataFrame(f_list,columns=['img_id'])
+      f_list_df['rec_type'] = 'train'
+      train_df = f_list_df.sample(frac=.85,random_state=101)
+      train_df['rec_type'] = 'train'
+      f_list_df = f_list_df.drop(index=train_df.index,axis=0)
+      test_df = f_list_df.sample(frac=.9,random_state=101)
+      test_df['rec_type'] = 'test'
+      val_df = f_list_df.drop(index=test_df.index,axis=0)
+      val_df['rec_type'] = 'val'
+       
+      #assemble all dataset in main set
+      frames = [train_df,test_df,val_df]
+      final_df = pd.concat(frames)
+       
+      #look at dataset..show it
+      print(final_df.groupby(['rec_type'])['img_id'].count())
+      rec_types = final_df['rec_type'].unique()
+      for rec_type in rec_types:
+          print(final_df[final_df['rec_type'] == rec_type].head(3))
+          
+          #dump all data
+          final_df.loc[final_df['rec_type'] == rec_type,['img_id']].to_csv('/tmp/' + rec_type + '_df.csv',header=False,index=False)
+       
+      #dump all data
+      final_df.to_csv('/tmp/img_conf.csv',index=False)
+   
+  def random_erase_np_v2( self, img, probability = 0.5, sl = 0.001, sh = 0.05, r1 = 0.3):
+      fn = 'random_erase_np_v2'
+      height = img.shape[0]
+      width = img.shape[1]
+      channel = img.shape[2]
+      area = width * height
+  
+      #erase_area_low_bound = np.round( np.sqrt(sl * area * r1) ).astype(np.int)
+      #erase_area_up_bound = np.round( np.sqrt((sh * area) / r1) ).astype(np.int)
+      erase_area_low_bound = np.round( np.sqrt(sl * area)).astype(np.int)
+      erase_area_up_bound = np.round( np.sqrt(sh * area)).astype(np.int)
+      if erase_area_up_bound < height:
+          h_upper_bound = erase_area_up_bound
+      else:
+          h_upper_bound = height
+      if erase_area_up_bound < width:
+          w_upper_bound = erase_area_up_bound
+      else:
+          w_upper_bound = width
+  
+      h = np.random.randint(erase_area_low_bound, h_upper_bound)
+      w = np.random.randint(erase_area_low_bound, w_upper_bound)
+  
+      x1 = np.random.randint(0, height+1 - h)
+      y1 = np.random.randint(0, width+1 - w)
+  
+      x1 = np.random.randint(0, height - h)
+      y1 = np.random.randint(0, width - w)
+      img[x1:x1+h, y1:y1+w, :] = np.random.randint(0, 255, size=(h, w, channel)).astype(np.uint8)
+      return img
+   
+  def generate_random_erase_samples( self, mythread_name: str, f_list: list, ddir: str, odir: str, sample_size: int, file_ext: str = '.jpg'):
+      fn = 'generate_random_erase_samples'
+      i = 0
+      start = time.time()
+      for s_ind in range(sample_size):       
+          for file in f_list:
+              t_fl = odir + file + '_' + str(s_ind) + file_ext
+              if os.path.exists(t_fl):
+                continue
+              #self.mylog(fn,"ddir + file + file_ext)
+              img = io.imread( ddir + file + file_ext)
+              t_img = self.random_erase_np_v2(img,)
+              io.imsave( odir + file + '_' + str(s_ind) + file_ext,t_img)
+              i += 1
+              #show_image_grid([t_img], [file], img_per_row=1)
+              #self.mylog(fn,"file: {} time taken: {} img.shape: {} t_img.shape: {}".format(file,time.time()-start,img.shape,t_img.shape))
+      self.mylog(fn,"Thread: {} generated {} images in {}...".format(mythread_name,i,time.time()-start))
+  
+  def get_random_erase_samples( self, ddir: str, odir: str = '/tmp/images/', sample_size: int = 2, file_ext: str = '.jpg',no_threads: int=2):    
+      fn = 'get_random_erase_samples'
+      if not os.path.exists(odir):
+          os.mkdir(odir)
+      files = self.get_img_files_from_dir( ddir, file_name_pattern = "^(.*?)\\" + file_ext + "$")  
+      #files = self.prep_training_data_from_images_in_dir(ddir='/disk1/data1/data/train/',file_name_pattern='^(.*?)\.jpeg$',probability=.20)
+      #self.mylog(fn,files)
+      #files = files[100001:500000]
+      self.mylog(fn,"Initial #recs [{}]".format(len(files)))
+      files = np.array(files,dtype='str')
+      if files.shape[0] > 1 and files.shape[0] % no_threads != 0:
+          files = files[:-1*(files.shape[0] % no_threads)] #skip last element to make it proper even number of array content
+      self.mylog(fn,"Corrected #recs [{}]".format(files.shape[0]))
+      files = np.split(files,no_threads)
+      i = 0
+      for f_list in files:
+          #self.mylog(fn,"f_list)
+          #self.generate_random_erase_samples(f_list=f_list,ddir=ddir,odir=odir,sample_size=sample_size)
+          try:
+              x = threading.Thread( target=self.generate_random_erase_samples, args=("Thread-%d" % (i), \
+                                                                      f_list, \
+                                                                      ddir, \
+                                                                      odir, \
+                                                                      sample_size, ) )
+              x.start()
+              #x.join()
+              i += 1
+          except:
+              self.mylog(fn,"Error: unable to start thread")
+  
+  
 if __name__ == "__main__":
     img_path = cmd_util.get_imgpath(sys.argv[1:])
     img_extractor = myImgExtractor(id='ie23',
-                                     imgdir='/disk1/data1/data/kaggle/ex/',
+                                     imgdir='/disk1/data1/data/train/',
                                      img_size=2048,
-                                     tdir='/disk1/data1/data/kaggle_patches/',
+                                     tdir='/disk1/data1/data/kaggle_patches1/',
                                      patch_size=128,
                                      patch_stride=32, #for generating train image use stride=32 else for test use patch_size
                                      img_ext='.jpeg',
                                      #gt_img_ext='_HE.jpg',
                                      gt_img_ext='.jpeg',
+                                     gt_flag=False,
                                      truth_pixel=255
                                     )
     #img_extractor.process_img_by_id(img_id='IDRiD_50.jpg')
-    img_extractor.generate_data2()
-    #img_extractor.build_ground_truth('82_left.jpeg')
-    #img_extractor.gen_images()
-    #img_extractor.process_img(img_path=img_path)
-    #img_extractor.read_img_mask_config(i_fl=img_path)
+    #call this function to prepare img_conf.csv input for imgExtract i.e. to run patches.
+    img_extractor.prep_training_data_from_images_in_dir(ddir='/disk1/data1/data/kaggle_patches1/images/',file_name_pattern='^(.*?)\.jpg$',probability=1.0)
+    #img_extractor.prep_training_data_from_images_in_dir(ddir='/disk1/data1/data/train/',file_name_pattern='^(.*?)\.jpeg$',probability=.20)
+    #img_extractor.get_random_erase_samples(ddir = '/disk1/data1/data/kaggle_patches1/images/',odir='/disk1/data1/data/kaggle_patches1/gt/',sample_size=5,no_threads=100)

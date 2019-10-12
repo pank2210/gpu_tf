@@ -7,3 +7,8 @@ dpath
 scipy
 scikit-image
 shapely
+skimage
+sklearn
+threading
+datetime
+mpl_toolkits
