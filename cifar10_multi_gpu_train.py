@@ -58,7 +58,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_dir', '/disk1/data1/data/models/inception',
                            """Directory where to write event logs """
                            """and checkpoint.""")
-tf.app.flags.DEFINE_integer('max_steps', 1810000,
+tf.app.flags.DEFINE_integer('max_steps', 500000,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_integer('num_gpus', 2,
                             """How many GPUs to use.""")
@@ -667,7 +667,7 @@ def main(argv=None):  # pylint: disable=unused-argument
    
   #model_name = 'resnet_basic_lr01.cpkt'
   #model_name = 'incep_v3_he_da_wce10.cpkt'
-  model_name = 'incepv3_kaggle_pretrain_lr01.cpkt'
+  model_name = 'incepv3_kpre_in_c1_lr000001.cpkt'
    
   #cifar10.maybe_download_and_extract()
   if len(argv) > 0:

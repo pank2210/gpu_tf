@@ -827,10 +827,13 @@ class Data(object):
          
         #self.log( mname, "cnt[{}] processing image_id[{}]".format(cnt,image_id), level=3)
          
-        imgpath = self.img_dir_path + str(image_id,'utf-8') + '_pi' + self.img_filename_ext #recreate original file URI
+        imgpath = self.pi_dir_path + str(image_id,'utf-8') + self.img_filename_ext #recreate original file URI
          
-        img = np.reshape(_probs[cnt],(n_img_w,n_img_h)) #recreate binary image of original size from flatten array
-        np.save(imgpath,img) #save predicted results as binary image
+        if self.model_type == 'pretrain_random_patch':
+          img = np.reshape(_probs[cnt],(n_img_w,n_img_h,self.gt_channels)) #recreate binary image of original size from flatten array
+        else:
+          img = np.reshape(_probs[cnt],(n_img_w,n_img_h)) #recreate binary image of original size from flatten array
+        io.imsave(imgpath,img) #save predicted results as binary image
            
         cnt += 1 #scroll through batch of results.
      
@@ -891,13 +894,11 @@ class Data(object):
            if self.img_filename_ext == '.npy': 
              label = np.load(labelpath) #load the label
            else:
-             label = myimg.myImg( imageid=image_id, config=self.myImg_config, path=labelpath,channels=gt_channels).getImage() 
+             #label = myimg.myImg( imageid=image_id, config=self.myImg_config, path=labelpath,channels=gt_channels).getImage() 
+             label = myimg.myImg( imageid=image_id, config=self.myImg_config, path=labelpath).getImage() 
            
-           if gt_channels == 1: #
+           if self.model_type != 'pretrain_random_patch':
              label[label > 0] = 1. #reset truth pixel to 1's else it should be 0's
-            
-           label = np.reshape(label,(1,label.shape[0]*label.shape[1]*gt_channels)) #flatten the label
-           y_buf[:] = label
             
         except ValueError as e:
            print("***********************************************************************")
@@ -918,20 +919,29 @@ class Data(object):
       #y_buf = keras.utils.to_categorical( label, self.no_classes)
       #print("XXXXXXXXXXXXXX",image_id,label,y_buf,y_buf.shape)
        
-      #y_buf = y_buf.astype('float32') / 255
       x_buf = x_buf.astype('float32')
-      x_buf /= 255.0
-      x_buf_min = np.min(x_buf)
-      x_buf_max = np.max(x_buf)
-      x_buf -= x_buf_min
-      #x_buf /= x_buf_max
+      #x_buf /= 255.0
+      x_buf -= np.mean(x_buf)
+      x_buf /= np.std(x_buf)
+      if len(x_buf.shape) > 2:
+        for c in range(x_buf.shape[2]):
+          x_buf[:,:,c] -= np.mean(x_buf[:,:,c])
+          x_buf[:,:,c] /= np.std(x_buf[:,:,c])
+       
+      label = label.astype('float32')
+      #label /= 255.0
+      label -= np.mean(label)
+      label /= np.std(label)
+      if len(label.shape) > 2:
+        for c in range(label.shape[2]):
+          label[:,:,c] -= np.mean(label[:,:,c])
+          label[:,:,c] /= np.std(label[:,:,c])
+        #label = np.sum(label,axis=2) #sum up all channels
+      label = np.reshape(label,(1,label.shape[0]*label.shape[1]*gt_channels)) #flatten the label
+      y_buf[:] = label
+            
        
       #below section of normalizing y_buf is only requried for target with continious variable i.e. pixel intensity 
-      y_buf = y_buf.astype('float32') / 255
-      y_buf_min = np.min(y_buf)
-      y_buf_max = np.max(y_buf)
-      y_buf -= y_buf_min
-      #x_buf /= x_buf_max
        
       yield ( image_id, x_buf, y_buf)
    

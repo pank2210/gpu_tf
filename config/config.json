@@ -13,6 +13,7 @@
         "img_heigth": 128,
         "img_dir_path": "/disk1/data1/data/kaggle_patches1/images/",
         "gt_dir_path": "/disk1/data1/data/kaggle_patches1/gt/",
+        "pi_dir_path": "/disk1/data1/data/kaggle_patches1/pi/",
         "img_croped_dir_path": "/disk1/data1/data/patches/",
         "img_filename_ext": ".jpg"
      },

@@ -7,11 +7,13 @@ export RET_HOME=/disk1/data1/ret
 export KAGGLE_CONFIG_DIR=$RET_HOME/kaggle/
 export SRC=$RET_HOME/gpu_tf
 export DATA=$RET_HOME/../data/
+export ISRC=$RET_HOME/img_utils
+export GSRC=$RET_HOME/models/research/object_detection
 
 source $RET_HOME/venv/bin/activate
 
 export XLA_FLAGS=--xla_hlo_profile
 export TF_XLA_FLAGS=--tf_xla_cpu_global_jit
 
-
+export BERT=/disk1/data1/bert
 set -o vi

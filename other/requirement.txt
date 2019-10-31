@@ -2,13 +2,10 @@ numpy
 pandas
 matplotlib
 psutil
-keras
 dpath
 scipy
-scikit-image
 shapely
-skimage
 sklearn
-threading
 datetime
-mpl_toolkits
+scikit-image
+keras
